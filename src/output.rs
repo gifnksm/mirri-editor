@@ -1,6 +1,10 @@
 use crate::editor::Editor;
 use snafu::{Backtrace, ResultExt, Snafu};
-use std::io::{self, Write};
+use std::{
+    cmp,
+    io::{self, Write},
+    path::Path,
+};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -51,7 +55,7 @@ fn scroll(editor: &mut Editor) {
     }
 }
 
-fn draw_raws(editor: &mut Editor) -> Result<()> {
+fn draw_rows(editor: &mut Editor) -> Result<()> {
     scroll(editor);
 
     for y in 0..editor.screen_rows {
@@ -93,12 +97,38 @@ fn draw_raws(editor: &mut Editor) -> Result<()> {
         //  1 : erase from the start of the screen to the active position, inclusive
         //  2 : erase all of the line, inclusive
         write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
-
-        if y + 1 < editor.screen_rows {
-            writeln!(&mut editor.term, "\r").context(TerminalOutput)?;
-        }
+        writeln!(&mut editor.term, "\r").context(TerminalOutput)?;
     }
 
+    Ok(())
+}
+
+fn draw_status_bar(editor: &mut Editor) -> Result<()> {
+    let default_path = Path::new("[No Name]");
+    let path = editor
+        .filename
+        .as_ref()
+        .map(|p| p.as_ref())
+        .unwrap_or(default_path);
+
+    let l_status = format!("{:.20} - {} lines", path.display(), editor.rows.len());
+    let r_status = format!("{}/{}", editor.cy + 1, editor.rows.len());
+
+    let l_width = cmp::min(l_status.len(), editor.screen_cols);
+    let r_width = cmp::min(r_status.len(), editor.screen_cols - l_width);
+    let sep_width = editor.screen_cols - l_width - r_width;
+
+    write!(
+        &mut editor.term,
+        "\x1b[7m{:.wl$}{:ws$}{:.wr$}\x1b[m",
+        l_status,
+        "",
+        r_status,
+        wl = l_width,
+        ws = sep_width,
+        wr = r_width,
+    )
+    .context(TerminalOutput)?;
     Ok(())
 }
 
@@ -106,7 +136,8 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
     write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
     write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
-    draw_raws(editor)?;
+    draw_rows(editor)?;
+    draw_status_bar(editor)?;
 
     write!(
         &mut editor.term,

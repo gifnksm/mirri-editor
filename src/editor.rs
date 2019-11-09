@@ -3,6 +3,7 @@ use crate::{
     terminal::{self, RawTerminal},
 };
 use snafu::{ResultExt, Snafu};
+use std::path::PathBuf;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -22,13 +23,15 @@ pub(crate) struct Editor {
     pub(crate) row_off: usize,
     pub(crate) col_off: usize,
     pub(crate) rows: Vec<Row>,
+    pub(crate) filename: Option<PathBuf>,
     pub(crate) term: RawTerminal,
 }
 
 impl Editor {
     pub(crate) fn new() -> Result<Self> {
         let mut term = RawTerminal::new().context(TerminalError)?;
-        let (screen_cols, screen_rows) = term.get_window_size().context(TerminalError)?;
+        let (screen_cols, mut screen_rows) = term.get_window_size().context(TerminalError)?;
+        screen_rows -= 1; // status bar height
 
         Ok(Editor {
             cx: 0,
@@ -39,6 +42,7 @@ impl Editor {
             row_off: 0,
             col_off: 0,
             rows: vec![],
+            filename: None,
             term,
         })
     }
