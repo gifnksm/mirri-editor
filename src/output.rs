@@ -30,23 +30,60 @@ pub(crate) fn clear_screen(editor: &mut Editor) -> Result<()> {
     Ok(())
 }
 
+fn scroll(editor: &mut Editor) {
+    editor.rx = if let Some(row) = editor.rows.get(editor.cy) {
+        row.cx_to_rx(editor.cx)
+    } else {
+        0
+    };
+
+    if editor.cy < editor.row_off {
+        editor.row_off = editor.cy;
+    }
+    if editor.cy >= editor.row_off + editor.screen_rows {
+        editor.row_off = editor.cy - editor.screen_rows + 1;
+    }
+    if editor.rx < editor.col_off {
+        editor.col_off = editor.rx;
+    }
+    if editor.rx >= editor.col_off + editor.screen_cols {
+        editor.col_off = editor.rx - editor.screen_cols + 1;
+    }
+}
+
 fn draw_raws(editor: &mut Editor) -> Result<()> {
+    scroll(editor);
+
     for y in 0..editor.screen_rows {
-        if y == editor.screen_rows / 3 {
-            let welcome = format!(
-                "{} -- version {}",
-                env!("CARGO_PKG_DESCRIPTION"),
-                env!("CARGO_PKG_VERSION")
-            );
-            let mut width = editor.screen_cols;
-            if welcome.len() < editor.screen_cols {
+        let file_row = y + editor.row_off;
+        if file_row >= editor.rows.len() {
+            if y == editor.screen_rows / 3 {
+                let welcome = format!(
+                    "{} -- version {}",
+                    env!("CARGO_PKG_DESCRIPTION"),
+                    env!("CARGO_PKG_VERSION")
+                );
+                let mut width = editor.screen_cols;
+                if welcome.len() < editor.screen_cols {
+                    write!(&mut editor.term, "~").context(TerminalOutput)?;
+                    width = editor.screen_cols - 1
+                }
+                write!(&mut editor.term, "{:^w$.p$}", welcome, w = width, p = width)
+                    .context(TerminalOutput)?;
+            } else {
                 write!(&mut editor.term, "~").context(TerminalOutput)?;
-                width = editor.screen_cols - 1
             }
-            write!(&mut editor.term, "{:^w$.p$}", welcome, w = width, p = width)
-                .context(TerminalOutput)?;
         } else {
-            write!(&mut editor.term, "~").context(TerminalOutput)?;
+            let row = &editor.rows[file_row];
+            if row.render.len() > editor.col_off {
+                write!(
+                    &mut editor.term,
+                    "{:.p$}",
+                    &row.render[editor.col_off..],
+                    p = editor.screen_cols
+                )
+                .context(TerminalOutput)?;
+            }
         }
 
         // EL - Erase In Line
@@ -74,8 +111,8 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
     write!(
         &mut editor.term,
         "\x1b[{};{}H",
-        editor.cy + 1,
-        editor.cx + 1
+        (editor.cy - editor.row_off) + 1,
+        (editor.rx - editor.col_off) + 1
     )
     .context(TerminalOutput)?; // move cursor
     write!(&mut editor.term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
