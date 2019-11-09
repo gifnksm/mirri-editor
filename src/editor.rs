@@ -57,4 +57,12 @@ impl Editor {
         let now = Instant::now();
         self.status_msg = Some((now, s.into()));
     }
+
+    pub(crate) fn insert_char(&mut self, ch: char) {
+        if self.cy == self.rows.len() {
+            self.append_row("".into());
+        }
+        self.rows[self.cy].insert_char(self.cx, ch);
+        self.cx += 1;
+    }
 }

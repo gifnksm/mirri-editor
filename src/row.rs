@@ -34,6 +34,11 @@ impl Row {
         }
     }
 
+    pub(crate) fn insert_char(&mut self, at: usize, ch: char) {
+        self.chars.insert(at, ch);
+        self.update();
+    }
+
     pub(crate) fn cx_to_rx(&self, cx: usize) -> usize {
         let mut rx = 0;
         for ch in self.chars[..cx].bytes() {

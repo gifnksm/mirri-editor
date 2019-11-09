@@ -100,6 +100,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     move_cursor(editor, mv);
                 }
             }
+            Char(ch) => editor.insert_char(ch),
             _ => {}
         }
     }
