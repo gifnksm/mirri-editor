@@ -37,6 +37,9 @@ fn run() -> Result<()> {
     if let Some(file) = &opt.file {
         file::open(&mut editor, file).context(FileError)?;
     }
+
+    editor.set_status_msg("HELP: Ctrl-Q = quit");
+
     loop {
         output::refresh_screen(&mut editor).context(OutputError)?;
         output::flush(&mut editor).context(OutputError)?;

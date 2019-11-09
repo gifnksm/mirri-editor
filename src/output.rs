@@ -129,6 +129,20 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         wr = r_width,
     )
     .context(TerminalOutput)?;
+    writeln!(&mut editor.term, "\r").context(TerminalOutput)?;
+    Ok(())
+}
+
+fn draw_message_bar(editor: &mut Editor) -> Result<()> {
+    write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
+    if let Some((time, msg)) = &mut editor.status_msg {
+        if time.elapsed().as_secs() < 5 {
+            write!(&mut editor.term, "{:.w$}", msg, w = editor.screen_cols)
+                .context(TerminalOutput)?;
+        } else {
+            editor.status_msg = None;
+        }
+    }
     Ok(())
 }
 
@@ -138,6 +152,7 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
 
     draw_rows(editor)?;
     draw_status_bar(editor)?;
+    draw_message_bar(editor)?;
 
     write!(
         &mut editor.term,
