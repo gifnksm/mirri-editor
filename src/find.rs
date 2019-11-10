@@ -4,6 +4,10 @@ use crate::{
 };
 
 pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
+    let saved_cx = editor.cx;
+    let saved_cy = editor.cy;
+    let saved_col_off = editor.col_off;
+    let saved_row_off = editor.row_off;
     let _query = input::prompt_with_callback(
         editor,
         "Search: {} (ESC to cancel)",
@@ -22,7 +26,12 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                     }
                 }
                 Execute => {}
-                Cancel => {}
+                Cancel => {
+                    editor.cx = saved_cx;
+                    editor.cy = saved_cy;
+                    editor.col_off = saved_col_off;
+                    editor.row_off = saved_row_off;
+                }
             }
         },
     )?;
