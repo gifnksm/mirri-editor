@@ -44,6 +44,11 @@ impl Row {
         self.update();
     }
 
+    pub(crate) fn append_str(&mut self, s: &str) {
+        self.chars.push_str(s.as_ref());
+        self.update();
+    }
+
     pub(crate) fn cx_to_rx(&self, cx: usize) -> usize {
         let mut rx = 0;
         for ch in self.chars[..cx].bytes() {

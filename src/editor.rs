@@ -60,6 +60,11 @@ impl Editor {
         self.dirty = true;
     }
 
+    pub(crate) fn delete_row(&mut self, at: usize) {
+        self.rows.remove(at);
+        self.dirty = true;
+    }
+
     pub(crate) fn set_status_msg(&mut self, s: impl Into<String>) {
         let now = Instant::now();
         self.status_msg = Some((now, s.into()));
@@ -75,10 +80,19 @@ impl Editor {
     }
 
     pub(crate) fn delete_char(&mut self) {
-        if let Some(row) = self.rows.get_mut(self.cy) {
-            if self.cx > 0 {
+        if self.cx > 0 {
+            if let Some(row) = self.rows.get_mut(self.cy) {
                 row.delete_char(self.cx - 1);
                 self.cx -= 1;
+                self.dirty = true;
+            }
+        } else {
+            let (left, right) = self.rows.split_at_mut(self.cy);
+            if let (Some(prev), Some(row)) = (left.last_mut(), right.first_mut()) {
+                self.cx = prev.chars.len();
+                prev.append_str(&row.chars);
+                self.delete_row(self.cy);
+                self.cy -= 1;
                 self.dirty = true;
             }
         }
