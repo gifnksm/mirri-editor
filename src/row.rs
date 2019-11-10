@@ -59,11 +59,26 @@ impl Row {
         let mut rx = 0;
         for ch in self.chars[..cx].bytes() {
             if ch == b'\t' {
-                rx += TAB_STOP - (rx % TAB_STOP);
+                rx += TAB_STOP - rx % TAB_STOP;
             } else {
                 rx += 1;
             }
         }
         rx
+    }
+
+    pub(crate) fn rx_to_cx(&self, rx: usize) -> usize {
+        let mut cur_rx = 0;
+        for (cx, ch) in self.chars.bytes().enumerate() {
+            if ch == b'\t' {
+                cur_rx += TAB_STOP - rx % TAB_STOP;
+            } else {
+                cur_rx += 1;
+            }
+            if cur_rx > rx {
+                return cx;
+            }
+        }
+        return self.chars.len();
     }
 }

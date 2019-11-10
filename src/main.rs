@@ -5,6 +5,7 @@ use structopt::StructOpt;
 
 mod editor;
 mod file;
+mod find;
 mod input;
 mod output;
 mod row;
@@ -32,7 +33,7 @@ struct Opt {
 fn run() -> Result<()> {
     let opt = Opt::from_args();
     let mut editor = Editor::new().context(EditorError)?;
-    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit");
+    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
 
     if let Some(file) = &opt.file {
         editor.open(file);

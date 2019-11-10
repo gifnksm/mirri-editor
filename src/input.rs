@@ -1,6 +1,6 @@
 use crate::{
     editor::{self, Editor},
-    output,
+    find, output,
     terminal::{self, Key},
 };
 use snafu::{ResultExt, Snafu};
@@ -72,7 +72,7 @@ fn move_cursor(editor: &mut Editor, mv: CursorMove) {
 pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
-    while let Some(ch) = editor.term.read_key().context(TerminalError)? {
+    if let Some(ch) = editor.term.read_key().context(TerminalError)? {
         match ch {
             Char('\r') => editor.insert_newline(),
             Char(ch) if ch == ctrl_key('q') => {
@@ -97,6 +97,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     editor.cx = row.chars.len()
                 }
             }
+            Char(ch) if ch == ctrl_key('f') => find::find(editor)?,
             Char(ch) if ch == ctrl_key('h') => editor.delete_char(),
             Delete => {
                 move_cursor(editor, CursorMove::Right);
