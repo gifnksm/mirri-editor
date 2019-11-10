@@ -83,21 +83,30 @@ impl Row {
             return;
         };
 
+        let scs = syntax.singleline_comment_start;
+
         let mut prev_sep = true;
         let mut prev_hl = Highlight::Normal;
         let mut in_string = None;
 
-        let mut chars = self.render.chars().fuse();
-        while let Some(ch) = chars.next() {
+        let mut chars = self.render.char_indices().fuse();
+        while let Some((idx, ch)) = chars.next() {
             let mut highlight_len = ch.len_utf8();
             let highlight;
             let is_sep;
             #[allow(clippy::never_loop)]
             loop {
+                if !scs.is_empty() && in_string.is_none() && self.render[idx..].starts_with(scs) {
+                    highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
+                    highlight = Highlight::Comment;
+                    is_sep = true;
+                    break;
+                }
+
                 if syntax.string {
                     if let Some(delim) = in_string {
                         if ch == '\\' {
-                            highlight_len += chars.next().map(char::len_utf8).unwrap_or(0);
+                            highlight_len += chars.next().map(|(_, ch)| ch.len_utf8()).unwrap_or(0);
                         } else if ch == delim {
                             in_string = None;
                         }

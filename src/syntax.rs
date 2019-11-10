@@ -7,11 +7,13 @@ pub(crate) struct Syntax<'a> {
     pub(crate) filematch: &'a [&'a str],
     pub(crate) number: bool,
     pub(crate) string: bool,
+    pub(crate) singleline_comment_start: &'a str,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Highlight {
     Normal,
+    Comment,
     String,
     Number,
     Match,
@@ -21,6 +23,7 @@ impl Highlight {
     pub(crate) fn to_color(self) -> u32 {
         match self {
             Self::Normal => 37,
+            Self::Comment => 36,
             Self::String => 35,
             Self::Number => 31,
             Self::Match => 34,

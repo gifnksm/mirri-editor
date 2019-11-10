@@ -5,4 +5,5 @@ pub(crate) const HLDB: &[Syntax] = &[Syntax {
     filematch: &[".c", ".h", ".cpp"],
     number: true,
     string: true,
+    singleline_comment_start: "//",
 }];
