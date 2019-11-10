@@ -81,13 +81,25 @@ impl Row {
         let mut prev_hl = Highlight::Normal;
         let mut in_string = None;
 
+        let kw1s = syntax
+            .keyword1
+            .iter()
+            .copied()
+            .zip(iter::repeat(Highlight::Keyword1));
+        let kw2s = syntax
+            .keyword2
+            .iter()
+            .copied()
+            .zip(iter::repeat(Highlight::Keyword2));
+        let keywords = kw1s.chain(kw2s);
+
         let mut chars = self.render.char_indices().fuse();
         while let Some((idx, ch)) = chars.next() {
             let mut highlight_len = ch.len_utf8();
             let highlight;
             let is_sep;
             #[allow(clippy::never_loop)]
-            loop {
+            'outer: loop {
                 if let Some(scs) = scs {
                     if in_string.is_none() && self.render[idx..].starts_with(scs) {
                         highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
@@ -123,6 +135,26 @@ impl Row {
                     highlight = Highlight::Number;
                     is_sep = false;
                     break;
+                }
+
+                if prev_sep {
+                    let s = &self.render[idx..];
+                    for (kw, hl_ty) in keywords.clone() {
+                        if !s.starts_with(kw) {
+                            continue;
+                        }
+                        let s = s.trim_start_matches(kw);
+                        if !s.is_empty() && !s.starts_with(is_separator) {
+                            continue;
+                        }
+                        highlight = hl_ty;
+                        is_sep = false;
+                        for _ in kw.chars().skip(1) {
+                            highlight_len += chars.next().unwrap().1.len_utf8();
+                        }
+                        assert!(highlight_len == kw.len());
+                        break 'outer;
+                    }
                 }
 
                 highlight = Highlight::Normal;
