@@ -7,6 +7,7 @@ pub(crate) struct Syntax<'a> {
     pub(crate) number: bool,
     pub(crate) string: bool,
     pub(crate) singleline_comment_start: Option<&'a str>,
+    pub(crate) multiline_comment: Option<(&'a str, &'a str)>,
     pub(crate) keyword1: &'a [&'a str],
     pub(crate) keyword2: &'a [&'a str],
 }
@@ -17,6 +18,7 @@ const DEFAULT: Syntax = Syntax {
     number: false,
     string: false,
     singleline_comment_start: None,
+    multiline_comment: None,
     keyword1: &[],
     keyword2: &[],
 };
@@ -27,6 +29,7 @@ const HLDB: &[Syntax] = &[Syntax {
     number: true,
     string: true,
     singleline_comment_start: Some("//"),
+    multiline_comment: Some(("/*", "*/")),
     keyword1: &[
         "switch", "if", "while", "for", "break", "continue", "return", "else", "struct", "union",
         "typedef", "static", "enum", "class", "case",
@@ -39,7 +42,8 @@ const HLDB: &[Syntax] = &[Syntax {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Highlight {
     Normal,
-    Comment,
+    SingleLineComment,
+    MultiLineComment,
     Keyword1,
     Keyword2,
     String,
@@ -51,7 +55,7 @@ impl Highlight {
     pub(crate) fn to_color(self) -> u32 {
         match self {
             Self::Normal => 37,
-            Self::Comment => 36,
+            Self::SingleLineComment | Self::MultiLineComment => 36,
             Self::Keyword1 => 33,
             Self::Keyword2 => 32,
             Self::String => 35,

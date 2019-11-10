@@ -2,6 +2,7 @@ use crate::{
     editor::Editor,
     input::{self, PromptCommand},
     syntax::Highlight,
+    util::SliceExt,
 };
 use std::mem;
 
@@ -46,9 +47,10 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
 
             let (mut y, mut sx, mut ex) = last_match.unwrap_or((editor.cy, editor.rx, editor.rx));
             for _ in 0..editor.rows.len() {
-                let row = &mut editor.rows[y];
+                let [prev, row, next] = editor.rows.get3_mut(y);
+                let row = row.unwrap();
                 row.update_render();
-                row.update_syntax(editor.syntax);
+                row.update_syntax(editor.syntax, prev, next);
 
                 let (idx_off, res) = if is_forward {
                     (ex, row.render()[ex..].match_indices(query.as_str()).next())

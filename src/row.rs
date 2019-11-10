@@ -10,6 +10,7 @@ pub(crate) struct Row {
     render_updated: bool,
     highlight: Vec<Highlight>,
     highlight_updated: bool,
+    highlight_open_comment: bool,
 }
 
 impl Row {
@@ -21,6 +22,7 @@ impl Row {
             render_updated: false,
             highlight: vec![],
             highlight_updated: false,
+            highlight_open_comment: false,
         }
     }
 
@@ -66,7 +68,12 @@ impl Row {
         }
     }
 
-    pub(crate) fn update_syntax(&mut self, syntax: &Syntax) {
+    pub(crate) fn update_syntax(
+        &mut self,
+        syntax: &Syntax,
+        prev_row: Option<&mut Self>,
+        next_row: Option<&mut Self>,
+    ) {
         if self.highlight_updated {
             return;
         }
@@ -76,10 +83,14 @@ impl Row {
         self.highlight.clear();
 
         let scs = syntax.singleline_comment_start;
+        let mc = syntax.multiline_comment;
 
         let mut prev_sep = true;
         let mut prev_hl = Highlight::Normal;
         let mut in_string = None;
+        let mut in_ml_comment = prev_row
+            .map(|row| row.highlight_open_comment)
+            .unwrap_or(false);
 
         let kw1s = syntax
             .keyword1
@@ -101,9 +112,34 @@ impl Row {
             #[allow(clippy::never_loop)]
             'outer: loop {
                 if let Some(scs) = scs {
-                    if in_string.is_none() && self.render[idx..].starts_with(scs) {
+                    if in_string.is_none() && !in_ml_comment && self.render[idx..].starts_with(scs)
+                    {
                         highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
-                        highlight = Highlight::Comment;
+                        highlight = Highlight::SingleLineComment;
+                        is_sep = true;
+                        break;
+                    }
+                }
+
+                if let Some((mcs, mce)) = mc {
+                    if in_ml_comment {
+                        highlight = Highlight::MultiLineComment;
+                        if self.render[idx..].starts_with(mce) {
+                            in_ml_comment = false;
+                            for _ in mcs.chars().skip(1) {
+                                highlight_len += chars.next().unwrap().1.len_utf8();
+                            }
+                            assert!(highlight_len == mce.len());
+                        }
+                        is_sep = true;
+                        break;
+                    } else if self.render[idx..].starts_with(mcs) {
+                        highlight = Highlight::MultiLineComment;
+                        in_ml_comment = true;
+                        for _ in mcs.chars().skip(1) {
+                            highlight_len += chars.next().unwrap().1.len_utf8();
+                        }
+                        assert!(highlight_len == mce.len());
                         is_sep = true;
                         break;
                     }
@@ -167,6 +203,14 @@ impl Row {
 
             prev_hl = highlight;
             prev_sep = is_sep;
+        }
+
+        let changed = self.highlight_open_comment != in_ml_comment;
+        self.highlight_open_comment = in_ml_comment;
+        if changed {
+            if let Some(next) = next_row {
+                next.invalidate_syntax();
+            }
         }
     }
 

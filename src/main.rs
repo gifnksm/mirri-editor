@@ -11,6 +11,7 @@ mod output;
 mod row;
 mod syntax;
 mod terminal;
+mod util;
 
 #[derive(Debug, Snafu)]
 enum Error {

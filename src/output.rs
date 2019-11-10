@@ -1,4 +1,4 @@
-use crate::{editor::Editor, syntax::Highlight};
+use crate::{editor::Editor, syntax::Highlight, util::SliceExt};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
@@ -78,9 +78,10 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                 write!(&mut editor.term, "~").context(TerminalOutput)?;
             }
         } else {
-            let row = &mut editor.rows[file_row];
+            let [prev, row, next] = editor.rows.get3_mut(file_row);
+            let row = row.unwrap();
             row.update_render();
-            row.update_syntax(editor.syntax);
+            row.update_syntax(editor.syntax, prev, next);
             let render = row.render();
             let hl = row.highlight();
 
