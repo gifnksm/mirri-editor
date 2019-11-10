@@ -1,4 +1,3 @@
-use crate::filetypes::HLDB;
 use std::{ffi::OsStr, path::Path};
 
 #[derive(Debug, Clone)]
@@ -7,8 +6,24 @@ pub(crate) struct Syntax<'a> {
     pub(crate) filematch: &'a [&'a str],
     pub(crate) number: bool,
     pub(crate) string: bool,
-    pub(crate) singleline_comment_start: &'a str,
+    pub(crate) singleline_comment_start: Option<&'a str>,
 }
+
+const DEFAULT: Syntax = Syntax {
+    filetype: "no ft",
+    filematch: &[],
+    number: false,
+    string: false,
+    singleline_comment_start: None,
+};
+
+const HLDB: &[Syntax] = &[Syntax {
+    filetype: "c",
+    filematch: &[".c", ".h", ".cpp"],
+    number: true,
+    string: true,
+    singleline_comment_start: Some("//"),
+}];
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Highlight {
@@ -31,7 +46,11 @@ impl Highlight {
     }
 }
 
-pub(crate) fn select(filename: Option<impl AsRef<Path>>) -> Option<&'static Syntax<'static>> {
+pub(crate) fn select(filename: Option<impl AsRef<Path>>) -> &'static Syntax<'static> {
+    select_from_hldb(filename).unwrap_or(&DEFAULT)
+}
+
+fn select_from_hldb(filename: Option<impl AsRef<Path>>) -> Option<&'static Syntax<'static>> {
     let filename = filename?;
     let filename = filename.as_ref();
     let name = filename.file_name();

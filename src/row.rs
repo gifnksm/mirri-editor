@@ -66,7 +66,7 @@ impl Row {
         }
     }
 
-    pub(crate) fn update_syntax(&mut self, syntax: Option<&Syntax>) {
+    pub(crate) fn update_syntax(&mut self, syntax: &Syntax) {
         if self.highlight_updated {
             return;
         }
@@ -74,14 +74,6 @@ impl Row {
 
         self.highlight_updated = true;
         self.highlight.clear();
-
-        let syntax = if let Some(syntax) = syntax {
-            syntax
-        } else {
-            self.highlight
-                .extend(iter::repeat(Highlight::Normal).take(self.render.len()));
-            return;
-        };
 
         let scs = syntax.singleline_comment_start;
 
@@ -96,11 +88,13 @@ impl Row {
             let is_sep;
             #[allow(clippy::never_loop)]
             loop {
-                if !scs.is_empty() && in_string.is_none() && self.render[idx..].starts_with(scs) {
-                    highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
-                    highlight = Highlight::Comment;
-                    is_sep = true;
-                    break;
+                if let Some(scs) = scs {
+                    if in_string.is_none() && self.render[idx..].starts_with(scs) {
+                        highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
+                        highlight = Highlight::Comment;
+                        is_sep = true;
+                        break;
+                    }
                 }
 
                 if syntax.string {

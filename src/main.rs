@@ -5,7 +5,6 @@ use structopt::StructOpt;
 
 mod editor;
 mod file;
-mod filetypes;
 mod find;
 mod input;
 mod output;

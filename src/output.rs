@@ -140,11 +140,7 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
     );
     let r_status = format!(
         "{} | {}/{}",
-        editor
-            .syntax
-            .as_ref()
-            .map(|s| s.filetype)
-            .unwrap_or("no ft"),
+        editor.syntax.filetype,
         editor.cy + 1,
         editor.rows.len()
     );

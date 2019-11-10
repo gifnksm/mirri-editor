@@ -33,7 +33,7 @@ pub(crate) struct Editor {
     pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
-    pub(crate) syntax: Option<&'static Syntax<'static>>,
+    pub(crate) syntax: &'static Syntax<'static>,
     pub(crate) term: RawTerminal,
 }
 
