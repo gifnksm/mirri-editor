@@ -1,5 +1,6 @@
 use crate::{
     editor::Editor,
+    file,
     terminal::{self, Key},
 };
 use snafu::{ResultExt, Snafu};
@@ -71,8 +72,16 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
 
     if let Some(ch) = editor.term.read_key().context(TerminalError)? {
         match ch {
-            Char(ch) if ch == ctrl_key('q') => return Ok(true),
             Char('\r') => {} // TODO
+            Char(ch) if ch == ctrl_key('q') => return Ok(true),
+            Char(ch) if ch == ctrl_key('s') => match file::save(editor) {
+                Ok(bytes) => {
+                    editor.set_status_msg(format!("{} bytes written to disk", bytes));
+                }
+                Err(e) => {
+                    editor.set_status_msg(format!("Can't save! {}", e));
+                }
+            },
             ArrowUp => move_cursor(editor, CursorMove::Up),
             ArrowDown => move_cursor(editor, CursorMove::Down),
             ArrowLeft => move_cursor(editor, CursorMove::Left),

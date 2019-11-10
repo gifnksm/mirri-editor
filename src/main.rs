@@ -38,7 +38,7 @@ fn run() -> Result<()> {
         file::open(&mut editor, file).context(FileError)?;
     }
 
-    editor.set_status_msg("HELP: Ctrl-Q = quit");
+    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit");
 
     loop {
         output::refresh_screen(&mut editor).context(OutputError)?;
