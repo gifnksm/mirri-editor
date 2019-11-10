@@ -55,9 +55,13 @@ impl Editor {
         })
     }
 
-    pub(crate) fn append_row(&mut self, s: String) {
-        self.rows.push(Row::new(s));
+    pub(crate) fn insert_row(&mut self, at: usize, s: String) {
+        self.rows.insert(at, Row::new(s));
         self.dirty = true;
+    }
+
+    pub(crate) fn append_row(&mut self, s: String) {
+        self.insert_row(self.rows.len(), s);
     }
 
     pub(crate) fn delete_row(&mut self, at: usize) {
@@ -76,6 +80,18 @@ impl Editor {
         }
         self.rows[self.cy].insert_char(self.cx, ch);
         self.cx += 1;
+        self.dirty = true;
+    }
+
+    pub(crate) fn insert_newline(&mut self) {
+        if let Some(row) = self.rows.get_mut(self.cy) {
+            let rest = row.split(self.cx);
+            self.insert_row(self.cy + 1, rest);
+        } else {
+            self.append_row("".into());
+        }
+        self.cy += 1;
+        self.cx = 0;
         self.dirty = true;
     }
 

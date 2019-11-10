@@ -72,7 +72,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
 
     if let Some(ch) = editor.term.read_key().context(TerminalError)? {
         match ch {
-            Char('\r') => {} // TODO
+            Char('\r') => editor.insert_newline(),
             Char(ch) if ch == ctrl_key('q') => {
                 if editor.dirty && editor.quit_times > 0 {
                     editor.set_status_msg(format!(

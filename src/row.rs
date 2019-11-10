@@ -49,6 +49,12 @@ impl Row {
         self.update();
     }
 
+    pub(crate) fn split(&mut self, at: usize) -> String {
+        let out = self.chars.split_off(at);
+        self.update();
+        out
+    }
+
     pub(crate) fn cx_to_rx(&self, cx: usize) -> usize {
         let mut rx = 0;
         for ch in self.chars[..cx].bytes() {
