@@ -54,7 +54,7 @@ fn move_cursor(editor: &mut Editor, mv: CursorMove) {
             }
         }
         Down => {
-            if editor.cy < editor.rows.len() {
+            if editor.cy + 1 < editor.rows.len() {
                 editor.cy += 1
             }
         }
