@@ -130,7 +130,22 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     Ok(false)
 }
 
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum PromptCommand {
+    Input,
+    Execute,
+    Cancel,
+}
+
 pub(crate) fn prompt(editor: &mut Editor, prompt: &str) -> Result<Option<String>> {
+    prompt_with_callback(editor, prompt, |_, _, _| {})
+}
+
+pub(crate) fn prompt_with_callback(
+    editor: &mut Editor,
+    prompt: &str,
+    mut callback: impl FnMut(&mut Editor, &mut String, PromptCommand),
+) -> Result<Option<String>> {
     use Key::*;
 
     let mut buf = String::new();
@@ -147,15 +162,20 @@ pub(crate) fn prompt(editor: &mut Editor, prompt: &str) -> Result<Option<String>
                 Delete | Backspace => {
                     let _ = buf.pop();
                 }
-                Char('\x1b') => return Ok(None),
+                Char('\x1b') => {
+                    callback(editor, &mut buf, PromptCommand::Cancel);
+                    return Ok(None);
+                }
                 Char('\r') => {
                     if !buf.is_empty() {
                         editor.set_status_msg("");
+                        callback(editor, &mut buf, PromptCommand::Execute);
                         return Ok(Some(buf));
                     }
                 }
                 Char(ch) if !ch.is_control() => {
                     buf.push(ch);
+                    callback(editor, &mut buf, PromptCommand::Input);
                 }
                 _ => {}
             }
