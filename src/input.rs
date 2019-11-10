@@ -133,6 +133,8 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum PromptCommand {
     Input,
+    FindPrev,
+    FindNext,
     Execute,
     Cancel,
 }
@@ -173,6 +175,8 @@ pub(crate) fn prompt_with_callback(
                         return Ok(Some(buf));
                     }
                 }
+                ArrowLeft | ArrowUp => callback(editor, &mut buf, PromptCommand::FindPrev),
+                ArrowRight | ArrowDown => callback(editor, &mut buf, PromptCommand::FindNext),
                 Char(ch) if !ch.is_control() => {
                     buf.push(ch);
                     callback(editor, &mut buf, PromptCommand::Input);
