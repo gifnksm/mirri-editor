@@ -1,23 +1,18 @@
 use crate::filetypes::HLDB;
-use bitflags::bitflags;
 use std::{ffi::OsStr, path::Path};
-
-bitflags! {
-    pub(crate) struct SyntaxFlag: u32 {
-        const NUMBERS = 1 << 0;
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Syntax<'a> {
     pub(crate) filetype: &'a str,
     pub(crate) filematch: &'a [&'a str],
-    pub(crate) flags: SyntaxFlag,
+    pub(crate) number: bool,
+    pub(crate) string: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Highlight {
     Normal,
+    String,
     Number,
     Match,
 }
@@ -26,6 +21,7 @@ impl Highlight {
     pub(crate) fn to_color(self) -> u32 {
         match self {
             Self::Normal => 37,
+            Self::String => 35,
             Self::Number => 31,
             Self::Match => 34,
         }

@@ -1,7 +1,8 @@
-use crate::syntax::{Syntax, SyntaxFlag};
+use crate::syntax::Syntax;
 
 pub(crate) const HLDB: &[Syntax] = &[Syntax {
     filetype: "c",
     filematch: &[".c", ".h", ".cpp"],
-    flags: SyntaxFlag::NUMBERS,
+    number: true,
+    string: true,
 }];

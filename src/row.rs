@@ -1,4 +1,4 @@
-use crate::syntax::{Highlight, Syntax, SyntaxFlag};
+use crate::syntax::{Highlight, Syntax};
 use std::{fmt::Write, iter};
 
 const TAB_STOP: usize = 8;
@@ -85,19 +85,50 @@ impl Row {
 
         let mut prev_sep = true;
         let mut prev_hl = Highlight::Normal;
+        let mut in_string = None;
 
-        for ch in self.render.chars() {
-            let (highlight, is_sep) = if syntax.flags.contains(SyntaxFlag::NUMBERS)
-                && (ch.is_digit(10) && (prev_sep || prev_hl == Highlight::Number)
-                    || (ch == '.' && prev_hl == Highlight::Number))
-            {
-                (Highlight::Number, false)
-            } else {
-                (Highlight::Normal, is_separator(ch))
-            };
+        let mut chars = self.render.chars().fuse();
+        while let Some(ch) = chars.next() {
+            let mut highlight_len = ch.len_utf8();
+            let highlight;
+            let is_sep;
+            #[allow(clippy::never_loop)]
+            loop {
+                if syntax.string {
+                    if let Some(delim) = in_string {
+                        if ch == '\\' {
+                            highlight_len += chars.next().map(char::len_utf8).unwrap_or(0);
+                        } else if ch == delim {
+                            in_string = None;
+                        }
+                        highlight = Highlight::String;
+                        is_sep = true;
+                        break;
+                    }
+                    if ch == '"' || ch == '\'' {
+                        in_string = Some(ch);
+                        highlight = Highlight::String;
+                        is_sep = true;
+                        break;
+                    }
+                }
+
+                if syntax.number
+                    && (ch.is_digit(10) && (prev_sep || prev_hl == Highlight::Number)
+                        || (ch == '.' && prev_hl == Highlight::Number))
+                {
+                    highlight = Highlight::Number;
+                    is_sep = false;
+                    break;
+                }
+
+                highlight = Highlight::Normal;
+                is_sep = is_separator(ch);
+                break;
+            }
 
             self.highlight
-                .extend(iter::repeat(highlight).take(ch.len_utf8()));
+                .extend(iter::repeat(highlight).take(highlight_len));
 
             prev_hl = highlight;
             prev_sep = is_sep;
