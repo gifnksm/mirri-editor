@@ -2,8 +2,8 @@ use crate::editor::Editor;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
+    ffi::OsStr,
     io::{self, Write},
-    path::Path,
 };
 
 #[derive(Debug, Snafu)]
@@ -104,14 +104,18 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
 }
 
 fn draw_status_bar(editor: &mut Editor) -> Result<()> {
-    let default_path = Path::new("[No Name]");
+    let default_path = OsStr::new("[No Name]");
     let path = editor
         .filename
         .as_ref()
-        .map(|p| p.as_ref())
+        .and_then(|p| p.file_name())
         .unwrap_or(default_path);
 
-    let l_status = format!("{:.20} - {} lines", path.display(), editor.rows.len());
+    let l_status = format!(
+        "{:.20} - {} lines",
+        path.to_string_lossy(),
+        editor.rows.len()
+    );
     let r_status = format!("{}/{}", editor.cy + 1, editor.rows.len());
 
     let l_width = cmp::min(l_status.len(), editor.screen_cols);
