@@ -1,4 +1,3 @@
-use crate::editor::Editor;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     fs::File,
@@ -30,23 +29,23 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) fn open(editor: &mut Editor, filename: impl Into<PathBuf>) -> Result<()> {
-    let filename = filename.into();
-    let file = File::open(&filename).with_context(|| FileOpen {
-        filename: filename.clone(),
+pub(crate) fn open(filename: impl AsRef<Path>) -> Result<Vec<String>> {
+    let filename = filename.as_ref();
+    let file = File::open(filename).with_context(|| FileOpen {
+        filename: filename.to_path_buf(),
     })?;
+
+    let mut buf = vec![];
 
     let reader = BufReader::new(&file);
     for line in reader.lines() {
         let line = line.with_context(|| FileRead {
-            filename: filename.clone(),
+            filename: filename.to_path_buf(),
         })?;
-        editor.append_row(line);
+        buf.push(line);
     }
 
-    editor.filename = Some(filename);
-    editor.dirty = false;
-    Ok(())
+    Ok(buf)
 }
 
 pub(crate) fn save(

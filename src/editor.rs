@@ -58,6 +58,22 @@ impl Editor {
         })
     }
 
+    pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
+        let filename = filename.into();
+        match file::open(&filename) {
+            Ok(lines) => {
+                for line in lines {
+                    self.append_row(line);
+                }
+                self.filename = Some(filename);
+                self.dirty = false;
+            }
+            Err(e) => {
+                self.set_status_msg(format!("{}", e));
+            }
+        }
+    }
+
     pub(crate) fn save(&mut self) -> input::Result<()> {
         if self.filename.is_none() {
             self.filename = input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into);

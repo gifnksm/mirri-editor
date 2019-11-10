@@ -18,8 +18,6 @@ enum Error {
     InputError { source: input::Error },
     #[snafu(display("{}", source))]
     OutputError { source: output::Error },
-    #[snafu(display("{}", source))]
-    FileError { source: file::Error },
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
@@ -34,11 +32,11 @@ struct Opt {
 fn run() -> Result<()> {
     let opt = Opt::from_args();
     let mut editor = Editor::new().context(EditorError)?;
-    if let Some(file) = &opt.file {
-        file::open(&mut editor, file).context(FileError)?;
-    }
-
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit");
+
+    if let Some(file) = &opt.file {
+        editor.open(file);
+    }
 
     loop {
         output::refresh_screen(&mut editor).context(OutputError)?;
