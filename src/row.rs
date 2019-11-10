@@ -39,6 +39,11 @@ impl Row {
         self.update();
     }
 
+    pub(crate) fn delete_char(&mut self, at: usize) {
+        self.chars.remove(at);
+        self.update();
+    }
+
     pub(crate) fn cx_to_rx(&self, cx: usize) -> usize {
         let mut rx = 0;
         for ch in self.chars[..cx].bytes() {

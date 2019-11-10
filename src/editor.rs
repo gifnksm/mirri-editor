@@ -73,4 +73,14 @@ impl Editor {
         self.cx += 1;
         self.dirty = true;
     }
+
+    pub(crate) fn delete_char(&mut self) {
+        if let Some(row) = self.rows.get_mut(self.cy) {
+            if self.cx > 0 {
+                row.delete_char(self.cx - 1);
+                self.cx -= 1;
+                self.dirty = true;
+            }
+        }
+    }
 }

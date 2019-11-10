@@ -102,8 +102,12 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     editor.cx = row.chars.len()
                 }
             }
-            Char(ch) if ch == ctrl_key('h') => {} // TODO
-            Backspace | Delete => {}
+            Char(ch) if ch == ctrl_key('h') => editor.delete_char(),
+            Delete => {
+                move_cursor(editor, CursorMove::Right);
+                editor.delete_char();
+            }
+            Backspace => editor.delete_char(),
             PageUp | PageDown => {
                 let mv = if ch == PageUp {
                     editor.cy = editor.row_off;
