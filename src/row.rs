@@ -1,3 +1,4 @@
+use crate::syntax::Highlight;
 use std::fmt::Write;
 
 const TAB_STOP: usize = 8;
@@ -6,6 +7,7 @@ const TAB_STOP: usize = 8;
 pub(crate) struct Row {
     pub(crate) chars: String,
     pub(crate) render: String,
+    pub(crate) hl: Vec<Highlight>,
 }
 
 impl Row {
@@ -14,6 +16,7 @@ impl Row {
         let mut row = Row {
             chars: s,
             render: String::new(),
+            hl: vec![],
         };
         row.update();
         row
@@ -32,6 +35,8 @@ impl Row {
             }
             self.render.push_str(s);
         }
+
+        self.update_syntax();
     }
 
     pub(crate) fn insert_char(&mut self, at: usize, ch: char) {

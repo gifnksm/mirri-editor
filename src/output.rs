@@ -1,4 +1,4 @@
-use crate::editor::Editor;
+use crate::{editor::Editor, syntax::Highlight};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
@@ -79,18 +79,33 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
             }
         } else {
             let row = &editor.rows[file_row];
+            let mut current_color = None;
             if row.render.len() > editor.col_off {
-                for ch in row.render[editor.col_off
+                for (idx, ch) in row.render[editor.col_off
                     ..cmp::min(editor.col_off + editor.screen_cols, row.render.len())]
-                    .chars()
+                    .char_indices()
                 {
-                    if ch.is_digit(10) {
-                        write!(&mut editor.term, "\x1b[31m{}\x1b[39m", ch)
-                            .context(TerminalOutput)?;
-                    } else {
-                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                    let hl = row.hl[idx];
+                    match hl {
+                        Highlight::Normal => {
+                            if current_color.is_some() {
+                                current_color = None;
+                                write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
+                            }
+                            write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                        }
+                        Highlight::Number => {
+                            let color = hl.to_color();
+                            if current_color != Some(color) {
+                                current_color = Some(color);
+                                write!(&mut editor.term, "\x1b[{}m", color)
+                                    .context(TerminalOutput)?;
+                            }
+                            write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                        }
                     }
                 }
+                write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
             }
         }
 

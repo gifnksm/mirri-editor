@@ -9,6 +9,7 @@ mod find;
 mod input;
 mod output;
 mod row;
+mod syntax;
 mod terminal;
 
 #[derive(Debug, Snafu)]
