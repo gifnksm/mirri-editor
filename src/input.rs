@@ -1,5 +1,5 @@
 use crate::{
-    editor::Editor,
+    editor::{self, Editor},
     file,
     terminal::{self, Key},
 };
@@ -73,7 +73,17 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     if let Some(ch) = editor.term.read_key().context(TerminalError)? {
         match ch {
             Char('\r') => {} // TODO
-            Char(ch) if ch == ctrl_key('q') => return Ok(true),
+            Char(ch) if ch == ctrl_key('q') => {
+                if editor.dirty && editor.quit_times > 0 {
+                    editor.set_status_msg(format!(
+                        "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
+                        editor.quit_times
+                    ));
+                    editor.quit_times -= 1;
+                    return Ok(false);
+                }
+                return Ok(true);
+            }
             Char(ch) if ch == ctrl_key('s') => match file::save(editor) {
                 Ok(bytes) => {
                     editor.set_status_msg(format!("{} bytes written to disk", bytes));
@@ -113,6 +123,9 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
             Char('\x1b') => {}                    //TODO
             Char(ch) => editor.insert_char(ch),
         }
+
+        editor.quit_times = editor::QUIT_TIMES;
     }
+
     Ok(false)
 }

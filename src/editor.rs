@@ -13,6 +13,8 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub(crate) const QUIT_TIMES: usize = 3;
+
 #[derive(Debug)]
 pub(crate) struct Editor {
     pub(crate) cx: usize,
@@ -24,6 +26,7 @@ pub(crate) struct Editor {
     pub(crate) col_off: usize,
     pub(crate) rows: Vec<Row>,
     pub(crate) dirty: bool,
+    pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
     pub(crate) term: RawTerminal,
@@ -45,6 +48,7 @@ impl Editor {
             col_off: 0,
             rows: vec![],
             dirty: false,
+            quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
             term,
