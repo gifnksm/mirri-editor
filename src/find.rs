@@ -38,12 +38,18 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                 }
             }
 
-            let (mut y, mut sx) = last_match.unwrap_or((editor.cy, editor.rx));
+            let (mut y, mut sx, mut ex) = last_match.unwrap_or((editor.cy, editor.rx, editor.rx));
             for _ in 0..editor.rows.len() {
                 let row = &mut editor.rows[y];
-                if let Some((dx, s)) = row.render[sx..].match_indices(query.as_str()).next() {
-                    let rx = sx + dx;
-                    last_match = Some((y, rx + s.len()));
+                let (idx_off, res) = if is_forward {
+                    (ex, row.render[ex..].match_indices(query.as_str()).next())
+                } else {
+                    (0, row.render[..sx].rmatch_indices(query.as_str()).next())
+                };
+
+                if let Some((dx, s)) = res {
+                    let rx = idx_off + dx;
+                    last_match = Some((y, rx, rx + s.len()));
                     editor.cy = y;
                     editor.cx = row.rx_to_cx(rx);
                     editor.row_off = row.render.len();
@@ -52,7 +58,7 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                     }
                     break;
                 }
-                sx = 0;
+
                 if is_forward {
                     y = (y + 1) % editor.rows.len();
                 } else if y == 0 {
@@ -60,6 +66,8 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                 } else {
                     y -= 1;
                 }
+                sx = editor.rows[y].render.len();
+                ex = 0;
             }
         },
     )?;
