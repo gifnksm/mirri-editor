@@ -1,6 +1,6 @@
 use crate::{
     editor::{self, Editor},
-    file,
+    output,
     terminal::{self, Key},
 };
 use snafu::{ResultExt, Snafu};
@@ -9,6 +9,8 @@ use snafu::{ResultExt, Snafu};
 pub(crate) enum Error {
     #[snafu(display("{}", source))]
     TerminalError { source: terminal::Error },
+    #[snafu(display("{}", source))]
+    OutputError { source: output::Error },
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
@@ -70,7 +72,7 @@ fn move_cursor(editor: &mut Editor, mv: CursorMove) {
 pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
-    if let Some(ch) = editor.term.read_key().context(TerminalError)? {
+    while let Some(ch) = editor.term.read_key().context(TerminalError)? {
         match ch {
             Char('\r') => editor.insert_newline(),
             Char(ch) if ch == ctrl_key('q') => {
@@ -84,14 +86,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 }
                 return Ok(true);
             }
-            Char(ch) if ch == ctrl_key('s') => match file::save(editor) {
-                Ok(bytes) => {
-                    editor.set_status_msg(format!("{} bytes written to disk", bytes));
-                }
-                Err(e) => {
-                    editor.set_status_msg(format!("Can't save! {}", e));
-                }
-            },
+            Char(ch) if ch == ctrl_key('s') => editor.save()?,
             ArrowUp => move_cursor(editor, CursorMove::Up),
             ArrowDown => move_cursor(editor, CursorMove::Down),
             ArrowLeft => move_cursor(editor, CursorMove::Left),
@@ -123,8 +118,8 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     move_cursor(editor, mv);
                 }
             }
-            Char(ch) if ch == ctrl_key('l') => {} //TODO
-            Char('\x1b') => {}                    //TODO
+            Char(ch) if ch == ctrl_key('l') => {}
+            Char('\x1b') => {}
             Char(ch) => editor.insert_char(ch),
         }
 
@@ -132,4 +127,37 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     }
 
     Ok(false)
+}
+
+pub(crate) fn prompt(editor: &mut Editor, prompt: &str) -> Result<Option<String>> {
+    use Key::*;
+
+    let mut buf = String::new();
+    loop {
+        let prompt = prompt.replace("{}", &buf);
+        editor.set_status_msg(prompt);
+        output::refresh_screen(editor).context(OutputError)?;
+
+        while let Some(key) = editor.term.read_key().context(TerminalError)? {
+            match key {
+                Char(ch) if ch == ctrl_key('h') => {
+                    let _ = buf.pop();
+                }
+                Delete | Backspace => {
+                    let _ = buf.pop();
+                }
+                Char('\x1b') => return Ok(None),
+                Char('\r') => {
+                    if !buf.is_empty() {
+                        editor.set_status_msg("");
+                        return Ok(Some(buf));
+                    }
+                }
+                Char(ch) if !ch.is_control() => {
+                    buf.push(ch);
+                }
+                _ => {}
+            }
+        }
+    }
 }

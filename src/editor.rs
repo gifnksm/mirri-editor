@@ -1,4 +1,5 @@
 use crate::{
+    file, input,
     row::Row,
     terminal::{self, RawTerminal},
 };
@@ -9,6 +10,8 @@ use std::{path::PathBuf, time::Instant};
 pub(crate) enum Error {
     #[snafu(display("{}", source))]
     TerminalError { source: terminal::Error },
+    #[snafu(display("{}", source))]
+    InputError { source: input::Error },
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
@@ -53,6 +56,31 @@ impl Editor {
             status_msg: None,
             term,
         })
+    }
+
+    pub(crate) fn save(&mut self) -> input::Result<()> {
+        if self.filename.is_none() {
+            self.filename = input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into);
+        }
+        let filename = if let Some(filename) = self.filename.as_ref() {
+            filename
+        } else {
+            self.set_status_msg("Save aborted");
+            return Ok(());
+        };
+
+        let lines = self.rows.iter().map(|row| &row.chars);
+        match file::save(filename, lines) {
+            Ok(bytes) => {
+                self.dirty = false;
+                self.set_status_msg(format!("{} bytes written to disk", bytes));
+            }
+            Err(e) => {
+                self.set_status_msg(format!("Can't save! {}", e));
+            }
+        }
+
+        Ok(())
     }
 
     pub(crate) fn insert_row(&mut self, at: usize, s: String) {
