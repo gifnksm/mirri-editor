@@ -78,14 +78,18 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                 write!(&mut editor.term, "~").context(TerminalOutput)?;
             }
         } else {
-            let row = &editor.rows[file_row];
+            let row = &mut editor.rows[file_row];
             let mut current_color = None;
-            if row.render.len() > editor.col_off {
-                for (idx, ch) in row.render[editor.col_off
-                    ..cmp::min(editor.col_off + editor.screen_cols, row.render.len())]
+            row.update_render();
+            row.update_syntax();
+            let render = row.render();
+            let hl = row.highlight();
+            if render.len() > editor.col_off {
+                for (idx, ch) in render
+                    [editor.col_off..cmp::min(editor.col_off + editor.screen_cols, render.len())]
                     .char_indices()
                 {
-                    let hl = row.hl[idx];
+                    let hl = hl[idx];
                     if hl == Highlight::Normal {
                         if current_color.is_some() {
                             current_color = None;
