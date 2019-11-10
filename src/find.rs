@@ -48,7 +48,7 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
             for _ in 0..editor.rows.len() {
                 let row = &mut editor.rows[y];
                 row.update_render();
-                row.update_syntax();
+                row.update_syntax(editor.syntax);
 
                 let (idx_off, res) = if is_forward {
                     (ex, row.render()[ex..].match_indices(query.as_str()).next())

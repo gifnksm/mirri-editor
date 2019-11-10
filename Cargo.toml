@@ -16,3 +16,4 @@ smallvec = "1.0.0"
 snafu = { version = "0.6.0", features = ["backtraces"] }
 term_size = "0.3.1"
 structopt = "0.3.4"
+bitflags = "1.2.1"

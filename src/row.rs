@@ -1,4 +1,4 @@
-use crate::syntax::Highlight;
+use crate::syntax::{Highlight, Syntax, SyntaxFlag};
 use std::{fmt::Write, iter};
 
 const TAB_STOP: usize = 8;
@@ -37,8 +37,12 @@ impl Row {
         &mut self.highlight
     }
 
-    fn invalidate(&mut self) {
+    fn invalidate_render(&mut self) {
         self.render_updated = false;
+        self.highlight_updated = false;
+    }
+
+    pub(crate) fn invalidate_syntax(&mut self) {
         self.highlight_updated = false;
     }
 
@@ -62,7 +66,7 @@ impl Row {
         }
     }
 
-    pub(crate) fn update_syntax(&mut self) {
+    pub(crate) fn update_syntax(&mut self, syntax: Option<&Syntax>) {
         if self.highlight_updated {
             return;
         }
@@ -71,13 +75,21 @@ impl Row {
         self.highlight_updated = true;
         self.highlight.clear();
 
+        let syntax = if let Some(syntax) = syntax {
+            syntax
+        } else {
+            self.highlight
+                .extend(iter::repeat(Highlight::Normal).take(self.render.len()));
+            return;
+        };
+
         let mut prev_sep = true;
         let mut prev_hl = Highlight::Normal;
 
         for ch in self.render.chars() {
-            let (highlight, is_sep) = if ch.is_digit(10)
-                && (prev_sep || prev_hl == Highlight::Number)
-                || (ch == '.' && prev_hl == Highlight::Number)
+            let (highlight, is_sep) = if syntax.flags.contains(SyntaxFlag::NUMBERS)
+                && (ch.is_digit(10) && (prev_sep || prev_hl == Highlight::Number)
+                    || (ch == '.' && prev_hl == Highlight::Number))
             {
                 (Highlight::Number, false)
             } else {
@@ -94,23 +106,23 @@ impl Row {
 
     pub(crate) fn insert_char(&mut self, at: usize, ch: char) {
         self.chars.insert(at, ch);
-        self.invalidate();
+        self.invalidate_render();
     }
 
     pub(crate) fn delete_char(&mut self, at: usize) {
         self.chars.remove(at);
-        self.invalidate();
+        self.invalidate_render();
     }
 
     pub(crate) fn append_str(&mut self, s: &str) {
         self.chars.push_str(s.as_ref());
-        self.invalidate();
+        self.invalidate_render();
     }
 
     pub(crate) fn split(&mut self, at: usize) -> String {
         let out = self.chars.split_off(at);
         if !out.is_empty() {
-            self.invalidate();
+            self.invalidate_render();
         }
         out
     }

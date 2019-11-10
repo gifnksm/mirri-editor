@@ -1,6 +1,7 @@
 use crate::{
     file, input,
     row::Row,
+    syntax::{self, Syntax},
     terminal::{self, RawTerminal},
 };
 use snafu::{ResultExt, Snafu};
@@ -32,6 +33,7 @@ pub(crate) struct Editor {
     pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
+    pub(crate) syntax: Option<&'static Syntax<'static>>,
     pub(crate) term: RawTerminal,
 }
 
@@ -54,8 +56,17 @@ impl Editor {
             quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
+            syntax: syntax::select(None::<&str>),
             term,
         })
+    }
+
+    fn set_filename(&mut self, filename: Option<PathBuf>) {
+        self.filename = filename;
+        self.syntax = syntax::select(self.filename.as_ref());
+        for row in &mut self.rows {
+            row.invalidate_syntax();
+        }
     }
 
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
@@ -65,7 +76,7 @@ impl Editor {
                 for line in lines {
                     self.append_row(line);
                 }
-                self.filename = Some(filename);
+                self.set_filename(Some(filename));
                 self.dirty = false;
             }
             Err(e) => {
@@ -75,10 +86,11 @@ impl Editor {
     }
 
     pub(crate) fn save(&mut self) -> input::Result<()> {
-        if self.filename.is_none() {
-            self.filename = input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into);
-        }
-        let filename = if let Some(filename) = self.filename.as_ref() {
+        let filename = if let Some(filename) = &self.filename {
+            filename.clone()
+        } else if let Some(filename) =
+            input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into)
+        {
             filename
         } else {
             self.set_status_msg("Save aborted");
@@ -86,10 +98,11 @@ impl Editor {
         };
 
         let lines = self.rows.iter().map(|row| &row.chars);
-        match file::save(filename, lines) {
+        match file::save(&filename, lines) {
             Ok(bytes) => {
-                self.dirty = false;
                 self.set_status_msg(format!("{} bytes written to disk", bytes));
+                self.set_filename(Some(filename));
+                self.dirty = false;
             }
             Err(e) => {
                 self.set_status_msg(format!("Can't save! {}", e));

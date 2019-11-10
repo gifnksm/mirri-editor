@@ -79,11 +79,12 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
             }
         } else {
             let row = &mut editor.rows[file_row];
-            let mut current_color = None;
             row.update_render();
-            row.update_syntax();
+            row.update_syntax(editor.syntax);
             let render = row.render();
             let hl = row.highlight();
+
+            let mut current_color = None;
             if render.len() > editor.col_off {
                 for (idx, ch) in render
                     [editor.col_off..cmp::min(editor.col_off + editor.screen_cols, render.len())]
@@ -137,7 +138,16 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         editor.rows.len(),
         dirty_indicator
     );
-    let r_status = format!("{}/{}", editor.cy + 1, editor.rows.len());
+    let r_status = format!(
+        "{} | {}/{}",
+        editor
+            .syntax
+            .as_ref()
+            .map(|s| s.filetype)
+            .unwrap_or("no ft"),
+        editor.cy + 1,
+        editor.rows.len()
+    );
 
     let l_width = cmp::min(l_status.len(), editor.screen_cols);
     let r_width = cmp::min(r_status.len(), editor.screen_cols - l_width);
