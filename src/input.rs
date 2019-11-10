@@ -70,11 +70,9 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
     if let Some(ch) = editor.term.read_key().context(TerminalError)? {
-        if ch == Char(ctrl_key('q')) {
-            return Ok(true);
-        }
-
         match ch {
+            Char(ch) if ch == ctrl_key('q') => return Ok(true),
+            Char('\r') => {} // TODO
             ArrowUp => move_cursor(editor, CursorMove::Up),
             ArrowDown => move_cursor(editor, CursorMove::Down),
             ArrowLeft => move_cursor(editor, CursorMove::Left),
@@ -85,6 +83,8 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     editor.cx = row.chars.len()
                 }
             }
+            Char(ch) if ch == ctrl_key('h') => {} // TODO
+            Backspace | Delete => {}
             PageUp | PageDown => {
                 let mv = if ch == PageUp {
                     editor.cy = editor.row_off;
@@ -100,8 +100,9 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     move_cursor(editor, mv);
                 }
             }
+            Char(ch) if ch == ctrl_key('l') => {} //TODO
+            Char('\x1b') => {}                    //TODO
             Char(ch) => editor.insert_char(ch),
-            _ => {}
         }
     }
     Ok(false)

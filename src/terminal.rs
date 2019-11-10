@@ -37,6 +37,7 @@ pub(crate) enum Error {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Key {
     Char(char),
+    Backspace,
     ArrowLeft,
     ArrowRight,
     ArrowUp,
@@ -193,6 +194,7 @@ impl RawTerminal {
                 };
                 Ok(Some(key))
             }
+            Some('\x7f') => Ok(Some(Backspace)),
             Some(ch) => Ok(Some(Char(ch))),
         }
     }
