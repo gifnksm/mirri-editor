@@ -80,13 +80,17 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
         } else {
             let row = &editor.rows[file_row];
             if row.render.len() > editor.col_off {
-                write!(
-                    &mut editor.term,
-                    "{:.p$}",
-                    &row.render[editor.col_off..],
-                    p = editor.screen_cols
-                )
-                .context(TerminalOutput)?;
+                for ch in row.render[editor.col_off
+                    ..cmp::min(editor.col_off + editor.screen_cols, row.render.len())]
+                    .chars()
+                {
+                    if ch.is_digit(10) {
+                        write!(&mut editor.term, "\x1b[31m{}\x1b[39m", ch)
+                            .context(TerminalOutput)?;
+                    } else {
+                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                    }
+                }
             }
         }
 
