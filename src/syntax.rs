@@ -5,6 +5,7 @@ use std::iter;
 pub(crate) enum Highlight {
     Normal,
     Number,
+    Match,
 }
 
 impl Highlight {
@@ -12,6 +13,7 @@ impl Highlight {
         match self {
             Self::Normal => 37,
             Self::Number => 31,
+            Self::Match => 34,
         }
     }
 }

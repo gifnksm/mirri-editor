@@ -86,23 +86,19 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                     .char_indices()
                 {
                     let hl = row.hl[idx];
-                    match hl {
-                        Highlight::Normal => {
-                            if current_color.is_some() {
-                                current_color = None;
-                                write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
-                            }
-                            write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                    if hl == Highlight::Normal {
+                        if current_color.is_some() {
+                            current_color = None;
+                            write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
                         }
-                        Highlight::Number => {
-                            let color = hl.to_color();
-                            if current_color != Some(color) {
-                                current_color = Some(color);
-                                write!(&mut editor.term, "\x1b[{}m", color)
-                                    .context(TerminalOutput)?;
-                            }
-                            write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+                    } else {
+                        let color = hl.to_color();
+                        if current_color != Some(color) {
+                            current_color = Some(color);
+                            write!(&mut editor.term, "\x1b[{}m", color).context(TerminalOutput)?;
                         }
+                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
                     }
                 }
                 write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;

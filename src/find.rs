@@ -1,6 +1,7 @@
 use crate::{
     editor::Editor,
     input::{self, PromptCommand},
+    syntax::Highlight,
 };
 
 pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
@@ -39,13 +40,16 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
 
             let (mut y, mut sx) = last_match.unwrap_or((editor.cy, editor.rx));
             for _ in 0..editor.rows.len() {
-                let row = &editor.rows[y];
+                let row = &mut editor.rows[y];
                 if let Some((dx, s)) = row.render[sx..].match_indices(query.as_str()).next() {
                     let rx = sx + dx;
                     last_match = Some((y, rx + s.len()));
                     editor.cy = y;
                     editor.cx = row.rx_to_cx(rx);
-                    editor.row_off = editor.rows.len();
+                    editor.row_off = row.render.len();
+                    for hl in &mut row.hl[rx..rx + s.len()] {
+                        *hl = Highlight::Match
+                    }
                     break;
                 }
                 sx = 0;
