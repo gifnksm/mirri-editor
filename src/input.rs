@@ -165,6 +165,7 @@ pub(crate) fn prompt_with_callback(
                     let _ = buf.pop();
                 }
                 Char('\x1b') => {
+                    editor.set_status_msg("");
                     callback(editor, &mut buf, PromptCommand::Cancel);
                     return Ok(None);
                 }
