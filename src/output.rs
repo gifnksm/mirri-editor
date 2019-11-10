@@ -91,7 +91,14 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                     .char_indices()
                 {
                     let hl = hl[idx];
-                    if hl == Highlight::Normal {
+                    if ch.is_control() {
+                        let ch = ch as u8;
+                        let ch = if ch < 26 { (ch + b'@') as char } else { '?' };
+                        write!(&mut editor.term, "\x1b[7m{}\x1b[m", ch).context(TerminalOutput)?;
+                        if let Some(color) = current_color {
+                            write!(&mut editor.term, "\x1b[{}m", color).context(TerminalOutput)?;
+                        }
+                    } else if hl == Highlight::Normal {
                         if current_color.is_some() {
                             current_color = None;
                             write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
