@@ -10,6 +10,8 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
     let saved_col_off = editor.col_off;
     let saved_row_off = editor.row_off;
 
+    let mut saved_hl: Option<(usize, Vec<Highlight>)> = None;
+
     let mut last_match = None;
     let mut is_forward = true;
 
@@ -19,7 +21,10 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
         |editor, query, cmd| {
             use PromptCommand::*;
 
-            dbg!(cmd, &query);
+            if let Some((idx, hl)) = saved_hl.take() {
+                editor.rows[idx].hl = hl;
+            }
+
             match cmd {
                 Input => {
                     last_match = None;
@@ -53,6 +58,7 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                     editor.cy = y;
                     editor.cx = row.rx_to_cx(rx);
                     editor.row_off = row.render.len();
+                    saved_hl = Some((y, row.hl.clone()));
                     for hl in &mut row.hl[rx..rx + s.len()] {
                         *hl = Highlight::Match
                     }
