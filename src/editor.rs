@@ -23,6 +23,7 @@ pub(crate) struct Editor {
     pub(crate) row_off: usize,
     pub(crate) col_off: usize,
     pub(crate) rows: Vec<Row>,
+    pub(crate) dirty: bool,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
     pub(crate) term: RawTerminal,
@@ -43,6 +44,7 @@ impl Editor {
             row_off: 0,
             col_off: 0,
             rows: vec![],
+            dirty: false,
             filename: None,
             status_msg: None,
             term,
@@ -51,6 +53,7 @@ impl Editor {
 
     pub(crate) fn append_row(&mut self, s: String) {
         self.rows.push(Row::new(s));
+        self.dirty = true;
     }
 
     pub(crate) fn set_status_msg(&mut self, s: impl Into<String>) {
@@ -64,5 +67,6 @@ impl Editor {
         }
         self.rows[self.cy].insert_char(self.cx, ch);
         self.cx += 1;
+        self.dirty = true;
     }
 }

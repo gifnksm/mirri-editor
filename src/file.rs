@@ -47,10 +47,11 @@ pub(crate) fn open(editor: &mut Editor, filename: impl Into<PathBuf>) -> Result<
     }
 
     editor.filename = Some(filename);
+    editor.dirty = false;
     Ok(())
 }
 
-pub(crate) fn save(editor: &Editor) -> Result<usize> {
+pub(crate) fn save(editor: &mut Editor) -> Result<usize> {
     let filename = if let Some(filename) = editor.filename.as_ref() {
         filename
     } else {
@@ -72,5 +73,6 @@ pub(crate) fn save(editor: &Editor) -> Result<usize> {
         filename: filename.to_path_buf(),
     })?;
 
+    editor.dirty = false;
     Ok(bytes)
 }

@@ -110,11 +110,13 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         .as_ref()
         .and_then(|p| p.file_name())
         .unwrap_or(default_path);
+    let dirty_indicator = if editor.dirty { "(modified)" } else { "" };
 
     let l_status = format!(
-        "{:.20} - {} lines",
+        "{:.20} - {} lines {}",
         path.to_string_lossy(),
-        editor.rows.len()
+        editor.rows.len(),
+        dirty_indicator
     );
     let r_status = format!("{}/{}", editor.cy + 1, editor.rows.len());
 
