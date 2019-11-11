@@ -23,21 +23,41 @@ const DEFAULT: Syntax = Syntax {
     keyword2: &[],
 };
 
-const HLDB: &[Syntax] = &[Syntax {
-    filetype: "c",
-    filematch: &[".c", ".h", ".cpp"],
-    number: true,
-    single_line_comment: &["//"],
-    multi_line_comment: &[("/*", "*/")],
-    string_literal: &[("\"", "\""), ("'", "'")],
-    keyword1: &[
-        "switch", "if", "while", "for", "break", "continue", "return", "else", "struct", "union",
-        "typedef", "static", "enum", "class", "case",
-    ],
-    keyword2: &[
-        "int", "long", "double", "float", "char", "unsigned", "signed", "void",
-    ],
-}];
+const HLDB: &[Syntax] = &[
+    Syntax {
+        filetype: "c",
+        filematch: &[".c", ".h", ".cpp"],
+        number: true,
+        single_line_comment: &["//"],
+        multi_line_comment: &[("/*", "*/")],
+        string_literal: &[("\"", "\""), ("'", "'")],
+        keyword1: &[
+            "switch", "if", "while", "for", "break", "continue", "return", "else", "struct",
+            "union", "typedef", "static", "enum", "class", "case",
+        ],
+        keyword2: &[
+            "int", "long", "double", "float", "char", "unsigned", "signed", "void",
+        ],
+    },
+    Syntax {
+        filetype: "rust",
+        filematch: &[".rs"],
+        number: true,
+        single_line_comment: &["//"],
+        multi_line_comment: &[("/*", "*/")],
+        string_literal: &[("\"", "\""), ("'", "'")],
+        keyword1: &[
+            "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false",
+            "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+            "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+            "unsafe", "use", "where", "while",
+        ],
+        keyword2: &[
+            "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize", "bool", "char",
+            "f32", "f64",
+        ],
+    },
+];
 
 impl<'s> Syntax<'s> {
     pub(crate) fn select(filename: Option<impl AsRef<Path>>) -> &'static Syntax<'static> {
