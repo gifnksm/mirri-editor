@@ -211,7 +211,11 @@ impl<'s> Syntax<'s> {
             return None;
         }
         for kw in kws {
-            if chars.starts_with(kw) {
+            if !chars.starts_with(kw) {
+                continue;
+            }
+            let t = &chars[kw.len()..];
+            if t.is_empty() || t.starts_with(is_separator) {
                 return Some(kw.len());
             }
         }
