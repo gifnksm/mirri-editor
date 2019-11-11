@@ -110,10 +110,16 @@ fn select_from_hldb(filename: Option<impl AsRef<Path>>) -> Option<&'static Synta
     None
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum Open {
+    Comment(&'static str),
+    String(&'static str),
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SyntaxState {
     updated: bool,
-    open_comment: Option<&'static str>,
+    open: Option<Open>,
     highlight: Vec<Highlight>,
 }
 
@@ -121,7 +127,7 @@ impl SyntaxState {
     pub(crate) fn new() -> Self {
         SyntaxState {
             updated: false,
-            open_comment: None,
+            open: None,
             highlight: vec![],
         }
     }
@@ -157,8 +163,7 @@ impl SyntaxState {
         let sl = syntax.string_literal;
 
         let mut prev_sep = true;
-        let mut in_string: Option<&str> = None;
-        let mut in_ml_comment = prev.and_then(|state| state.open_comment);
+        let mut open = prev.and_then(|state| state.open);
         let keywords = syntax.keywords();
 
         let mut chars = render;
@@ -166,13 +171,12 @@ impl SyntaxState {
             let highlight_len;
             let highlight;
             let is_sep;
-            #[allow(clippy::never_loop)]
-            'outer: loop {
-                if let Some(delim) = in_string {
+            match open {
+                Some(Open::String(sle)) => {
                     let mut found = None;
                     let mut escaped = None;
-                    let dhead = delim.chars().next().unwrap();
-                    for (idx, m) in chars.match_indices(&[dhead, '\\'][..]) {
+                    let sle_head = sle.chars().next().unwrap();
+                    for (idx, m) in chars.match_indices(&[sle_head, '\\'][..]) {
                         if escaped == Some(idx) {
                             continue;
                         }
@@ -180,8 +184,8 @@ impl SyntaxState {
                             escaped = Some(idx + '\\'.len_utf8());
                             continue;
                         }
-                        if m.starts_with(delim) {
-                            found = Some(idx + delim.len());
+                        if m.starts_with(sle) {
+                            found = Some(idx + sle.len());
                             break;
                         }
                     }
@@ -189,90 +193,94 @@ impl SyntaxState {
                     highlight = Highlight::String;
                     if let Some(len) = found {
                         highlight_len = len;
-                        in_string = None;
+                        open = None;
                     } else {
                         highlight_len = chars.len();
                     }
                     is_sep = true;
-                    break;
                 }
-
-                if let Some(mce) = in_ml_comment {
+                Some(Open::Comment(mce)) => {
                     highlight = Highlight::MultiLineComment;
                     if let Some((idx, _)) = chars.match_indices(mce).next() {
                         highlight_len = idx + mce.len();
-                        in_ml_comment = None;
+                        open = None;
                     } else {
                         highlight_len = chars.len();
                     }
                     is_sep = true;
-                    break;
                 }
-
-                for scs in scs {
-                    if chars.starts_with(scs) {
-                        highlight = Highlight::SingleLineComment;
-                        highlight_len = chars.len();
-                        is_sep = true;
-                        break 'outer;
-                    }
-                }
-
-                for (mcs, mce) in mc {
-                    if chars.starts_with(mcs) {
-                        in_ml_comment = Some(mce);
-                        highlight = Highlight::MultiLineComment;
-                        highlight_len = mcs.len();
-                        is_sep = true;
-                        break 'outer;
-                    }
-                }
-
-                for (sls, sle) in sl {
-                    if chars.starts_with(sls) {
-                        highlight = Highlight::String;
-                        highlight_len = sls.len();
-                        is_sep = true;
-                        in_string = Some(sle);
-                        break 'outer;
-                    }
-                }
-
-                if prev_sep {
-                    if syntax.number {
-                        let t = chars.trim_start_matches(|ch: char| ch.is_digit(10));
-                        let match_len = chars.len() - t.len();
-                        if match_len > 0 {
-                            let t = t.trim_start_matches(|ch: char| ch.is_digit(10) || ch == '.');
-                            let match_len = chars.len() - t.len();
-                            highlight = Highlight::Number;
-                            highlight_len = match_len;
-                            is_sep = true;
-                            break;
+                None =>
+                {
+                    #[allow(clippy::never_loop)]
+                    'outer: loop {
+                        for scs in scs {
+                            if chars.starts_with(scs) {
+                                highlight = Highlight::SingleLineComment;
+                                highlight_len = chars.len();
+                                is_sep = true;
+                                break 'outer;
+                            }
                         }
-                    }
 
-                    for (kw, hl_ty) in keywords.clone() {
-                        let t = chars.trim_start_matches(kw);
-                        let match_len = chars.len() - t.len();
-                        if match_len == 0 {
-                            continue;
+                        for (mcs, mce) in mc {
+                            if chars.starts_with(mcs) {
+                                open = Some(Open::Comment(mce));
+                                highlight = Highlight::MultiLineComment;
+                                highlight_len = mcs.len();
+                                is_sep = true;
+                                break 'outer;
+                            }
                         }
-                        if !t.is_empty() && !t.starts_with(is_separator) {
-                            continue;
+
+                        for (sls, sle) in sl {
+                            if chars.starts_with(sls) {
+                                open = Some(Open::String(sle));
+                                highlight = Highlight::String;
+                                highlight_len = sls.len();
+                                is_sep = true;
+                                break 'outer;
+                            }
                         }
-                        highlight = hl_ty;
-                        highlight_len = match_len;
-                        is_sep = false;
-                        break 'outer;
+
+                        if prev_sep {
+                            if syntax.number {
+                                let t = chars.trim_start_matches(|ch: char| ch.is_digit(10));
+                                let match_len = chars.len() - t.len();
+                                if match_len > 0 {
+                                    let t = t.trim_start_matches(|ch: char| {
+                                        ch.is_digit(10) || ch == '.'
+                                    });
+                                    let match_len = chars.len() - t.len();
+                                    highlight = Highlight::Number;
+                                    highlight_len = match_len;
+                                    is_sep = true;
+                                    break;
+                                }
+                            }
+
+                            for (kw, hl_ty) in keywords.clone() {
+                                let t = chars.trim_start_matches(kw);
+                                let match_len = chars.len() - t.len();
+                                if match_len == 0 {
+                                    continue;
+                                }
+                                if !t.is_empty() && !t.starts_with(is_separator) {
+                                    continue;
+                                }
+                                highlight = hl_ty;
+                                highlight_len = match_len;
+                                is_sep = false;
+                                break 'outer;
+                            }
+                        }
+
+                        let ch = chars.chars().next().unwrap();
+                        highlight = Highlight::Normal;
+                        highlight_len = ch.len_utf8();
+                        is_sep = is_separator(ch);
+                        break;
                     }
                 }
-
-                let ch = chars.chars().next().unwrap();
-                highlight = Highlight::Normal;
-                highlight_len = ch.len_utf8();
-                is_sep = is_separator(ch);
-                break;
             }
 
             self.highlight
@@ -281,8 +289,8 @@ impl SyntaxState {
             prev_sep = is_sep;
         }
 
-        let changed = self.open_comment != in_ml_comment;
-        self.open_comment = in_ml_comment;
+        let changed = self.open != open;
+        self.open = open;
         if changed {
             if let Some(next) = next {
                 next.invalidate();
