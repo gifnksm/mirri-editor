@@ -7,7 +7,7 @@ pub(crate) struct Syntax<'a> {
     pub(crate) number: bool,
     pub(crate) single_line_comment: &'a [&'a str],
     pub(crate) multi_line_comment: &'a [(&'a str, &'a str)],
-    pub(crate) string_literal: &'a [(&'a str, &'a str)],
+    pub(crate) string_literal: &'a [(&'a str, &'a str, bool)],
     pub(crate) keyword1: &'a [&'a str],
     pub(crate) keyword2: &'a [&'a str],
 }
@@ -30,7 +30,7 @@ const HLDB: &[Syntax] = &[
         number: true,
         single_line_comment: &["//"],
         multi_line_comment: &[("/*", "*/")],
-        string_literal: &[("\"", "\""), ("'", "'")],
+        string_literal: &[("\"", "\"", true), ("'", "'", true)],
         keyword1: &[
             "switch", "if", "while", "for", "break", "continue", "return", "else", "struct",
             "union", "typedef", "static", "enum", "class", "case",
@@ -45,7 +45,16 @@ const HLDB: &[Syntax] = &[
         number: true,
         single_line_comment: &["//"],
         multi_line_comment: &[("/*", "*/")],
-        string_literal: &[("\"", "\""), ("'", "'")],
+        string_literal: &[
+            ("'", "'", true),
+            ("\"", "\"", true),
+            ("r\"", "\"", false),
+            ("r#\"", "\"#", false),
+            ("r##\"", "\"##", false),
+            ("r###\"", "\"###", false),
+            ("r####\"", "\"####", false),
+            ("r#####\"", "\"#####", false),
+        ],
         keyword1: &[
             "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false",
             "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
@@ -93,14 +102,14 @@ impl<'s> Syntax<'s> {
         open: &mut Option<Open<'s>>,
     ) -> (Highlight, usize) {
         match open {
-            Some(Open::String(sle)) => {
-                let (len, new_open) = self.parse_string_literal_end(chars, sle);
+            Some(Open::String { end, has_escape }) => {
+                let (len, new_open) = self.parse_string_literal_end(chars, end, *has_escape);
                 *prev_sep = true;
                 *open = new_open;
                 (Highlight::String, len)
             }
-            Some(Open::Comment(mce)) => {
-                let (len, new_open) = self.parse_multi_line_comment_end(chars, mce);
+            Some(Open::Comment { end }) => {
+                let (len, new_open) = self.parse_multi_line_comment_end(chars, end);
                 *prev_sep = true;
                 *open = new_open;
                 (Highlight::MultiLineComment, len)
@@ -109,13 +118,13 @@ impl<'s> Syntax<'s> {
                 if let Some(len) = self.parse_single_line_comment(chars) {
                     *prev_sep = true;
                     (Highlight::SingleLineComment, len)
-                } else if let Some((len, mce)) = self.parse_multi_line_comment_start(chars) {
+                } else if let Some((len, new_open)) = self.parse_multi_line_comment_start(chars) {
                     *prev_sep = true;
-                    *open = Some(Open::Comment(mce));
+                    *open = Some(new_open);
                     (Highlight::MultiLineComment, len)
-                } else if let Some((len, sle)) = self.parse_string_literal_start(chars) {
+                } else if let Some((len, new_open)) = self.parse_string_literal_start(chars) {
                     *prev_sep = true;
-                    *open = Some(Open::String(sle));
+                    *open = Some(new_open);
                     (Highlight::String, len)
                 } else if let Some(len) = self.parse_number(chars, *prev_sep) {
                     *prev_sep = false;
@@ -144,10 +153,10 @@ impl<'s> Syntax<'s> {
         None
     }
 
-    fn parse_multi_line_comment_start(&self, chars: &str) -> Option<(usize, &str)> {
+    fn parse_multi_line_comment_start(&self, chars: &str) -> Option<(usize, Open)> {
         for (mcs, mce) in self.multi_line_comment {
             if chars.starts_with(mcs) {
-                return Some((mcs.len(), *mce));
+                return Some((mcs.len(), Open::Comment { end: *mce }));
             }
         }
         None
@@ -161,35 +170,52 @@ impl<'s> Syntax<'s> {
         if let Some((idx, _)) = chars.match_indices(mce).next() {
             (idx + mce.len(), None)
         } else {
-            (chars.len(), Some(Open::Comment(mce)))
+            (chars.len(), Some(Open::Comment { end: mce }))
         }
     }
 
-    fn parse_string_literal_start(&self, chars: &str) -> Option<(usize, &str)> {
-        for (sls, sle) in self.string_literal {
+    fn parse_string_literal_start(&self, chars: &str) -> Option<(usize, Open)> {
+        for (sls, sle, has_escape) in self.string_literal {
             if chars.starts_with(sls) {
-                return Some((sls.len(), *sle));
+                return Some((
+                    sls.len(),
+                    Open::String {
+                        end: *sle,
+                        has_escape: *has_escape,
+                    },
+                ));
             }
         }
         None
     }
 
-    fn parse_string_literal_end<'a>(&self, chars: &str, sle: &'a str) -> (usize, Option<Open<'a>>) {
+    fn parse_string_literal_end<'a>(
+        &self,
+        chars: &str,
+        sle: &'a str,
+        has_escape: bool,
+    ) -> (usize, Option<Open<'a>>) {
         let mut escaped = None;
         let sle_head = sle.chars().next().unwrap();
-        for (idx, m) in chars.match_indices(&[sle_head, '\\'][..]) {
+        for (idx, _) in chars.match_indices(&[sle_head, '\\'][..]) {
             if escaped == Some(idx) {
                 continue;
             }
-            if m.starts_with('\\') {
+            if has_escape && chars[idx..].starts_with('\\') {
                 escaped = Some(idx + '\\'.len_utf8());
                 continue;
             }
-            if m.starts_with(sle) {
+            if chars[idx..].starts_with(sle) {
                 return (idx + sle.len(), None);
             }
         }
-        (chars.len(), Some(Open::String(sle)))
+        (
+            chars.len(),
+            Some(Open::String {
+                end: sle,
+                has_escape,
+            }),
+        )
     }
 
     fn parse_number(&self, chars: &str, prev_sep: bool) -> Option<usize> {
@@ -258,8 +284,8 @@ impl Highlight {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum Open<'a> {
-    Comment(&'a str),
-    String(&'a str),
+    Comment { end: &'a str },
+    String { end: &'a str, has_escape: bool },
 }
 
 #[derive(Debug, Clone)]
