@@ -1,5 +1,5 @@
-use crate::syntax::{Highlight, Syntax};
-use std::{fmt::Write, iter};
+use crate::syntax::{Highlight, Syntax, SyntaxState};
+use std::fmt::Write;
 
 const TAB_STOP: usize = 8;
 
@@ -8,9 +8,7 @@ pub(crate) struct Row {
     pub(crate) chars: String,
     render: String,
     render_updated: bool,
-    highlight: Vec<Highlight>,
-    highlight_updated: bool,
-    highlight_open_comment: bool,
+    syntax_state: SyntaxState,
 }
 
 impl Row {
@@ -20,9 +18,7 @@ impl Row {
             chars: s,
             render: String::new(),
             render_updated: false,
-            highlight: vec![],
-            highlight_updated: false,
-            highlight_open_comment: false,
+            syntax_state: SyntaxState::new(),
         }
     }
 
@@ -32,20 +28,20 @@ impl Row {
     }
 
     pub(crate) fn highlight(&self) -> &[Highlight] {
-        &self.highlight
+        self.syntax_state.highlight()
     }
 
     pub(crate) fn highlight_mut(&mut self) -> &mut Vec<Highlight> {
-        &mut self.highlight
+        self.syntax_state.highlight_mut()
     }
 
     fn invalidate_render(&mut self) {
         self.render_updated = false;
-        self.highlight_updated = false;
+        self.syntax_state.invalidate();
     }
 
     pub(crate) fn invalidate_syntax(&mut self) {
-        self.highlight_updated = false;
+        self.syntax_state.invalidate();
     }
 
     pub(crate) fn update_render(&mut self) {
@@ -74,145 +70,13 @@ impl Row {
         prev_row: Option<&mut Self>,
         next_row: Option<&mut Self>,
     ) {
-        if self.highlight_updated {
-            return;
-        }
         self.update_render();
-
-        self.highlight_updated = true;
-        self.highlight.clear();
-
-        let scs = syntax.singleline_comment_start;
-        let mc = syntax.multiline_comment;
-
-        let mut prev_sep = true;
-        let mut prev_hl = Highlight::Normal;
-        let mut in_string = None;
-        let mut in_ml_comment = prev_row
-            .map(|row| row.highlight_open_comment)
-            .unwrap_or(false);
-
-        let kw1s = syntax
-            .keyword1
-            .iter()
-            .copied()
-            .zip(iter::repeat(Highlight::Keyword1));
-        let kw2s = syntax
-            .keyword2
-            .iter()
-            .copied()
-            .zip(iter::repeat(Highlight::Keyword2));
-        let keywords = kw1s.chain(kw2s);
-
-        let mut chars = self.render.char_indices().fuse();
-        while let Some((idx, ch)) = chars.next() {
-            let mut highlight_len = ch.len_utf8();
-            let highlight;
-            let is_sep;
-            #[allow(clippy::never_loop)]
-            'outer: loop {
-                if let Some(delim) = in_string {
-                    if ch == '\\' {
-                        highlight_len += chars.next().map(|(_, ch)| ch.len_utf8()).unwrap_or(0);
-                    } else if ch == delim {
-                        in_string = None;
-                    }
-                    highlight = Highlight::String;
-                    is_sep = true;
-                    break;
-                }
-
-                if in_ml_comment {
-                    let (mcs, mce) = mc.unwrap();
-                    highlight = Highlight::MultiLineComment;
-                    if self.render[idx..].starts_with(mce) {
-                        in_ml_comment = false;
-                        for _ in mcs.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == mce.len());
-                    }
-                    is_sep = true;
-                    break;
-                }
-
-                if let Some(scs) = scs {
-                    if self.render[idx..].starts_with(scs) {
-                        highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
-                        highlight = Highlight::SingleLineComment;
-                        is_sep = true;
-                        break;
-                    }
-                }
-
-                if let Some((mcs, mce)) = mc {
-                    if self.render[idx..].starts_with(mcs) {
-                        in_ml_comment = true;
-                        highlight = Highlight::MultiLineComment;
-                        for _ in mcs.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == mce.len());
-                        is_sep = true;
-                        break;
-                    }
-                }
-
-                if syntax.string && (ch == '"' || ch == '\'') {
-                    in_string = Some(ch);
-                    highlight = Highlight::String;
-                    is_sep = true;
-                    break;
-                }
-
-                if syntax.number
-                    && (ch.is_digit(10) && (prev_sep || prev_hl == Highlight::Number)
-                        || (ch == '.' && prev_hl == Highlight::Number))
-                {
-                    highlight = Highlight::Number;
-                    is_sep = false;
-                    break;
-                }
-
-                if prev_sep {
-                    let s = &self.render[idx..];
-                    for (kw, hl_ty) in keywords.clone() {
-                        if !s.starts_with(kw) {
-                            continue;
-                        }
-                        let s = s.trim_start_matches(kw);
-                        if !s.is_empty() && !s.starts_with(is_separator) {
-                            continue;
-                        }
-                        highlight = hl_ty;
-                        is_sep = false;
-                        for _ in kw.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == kw.len());
-                        break 'outer;
-                    }
-                }
-
-                highlight = Highlight::Normal;
-                is_sep = is_separator(ch);
-                break;
-            }
-
-            self.highlight
-                .extend(iter::repeat(highlight).take(highlight_len));
-
-            prev_hl = highlight;
-            prev_sep = is_sep;
-        }
-
-        let changed = self.highlight_open_comment != in_ml_comment;
-        self.highlight_open_comment = in_ml_comment;
-        if changed {
-            if let Some(next) = next_row {
-                next.invalidate_syntax();
-            }
-        }
+        self.syntax_state.update(
+            &self.render,
+            syntax,
+            prev_row.map(|row| &mut row.syntax_state),
+            next_row.map(|row| &mut row.syntax_state),
+        );
     }
 
     pub(crate) fn insert_char(&mut self, at: usize, ch: char) {
@@ -264,8 +128,4 @@ impl Row {
         }
         self.chars.len()
     }
-}
-
-fn is_separator(ch: char) -> bool {
-    ch.is_whitespace() || ch == '\0' || ",.()+-/*=~%<>[];".contains(ch)
 }
