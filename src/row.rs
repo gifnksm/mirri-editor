@@ -111,9 +111,33 @@ impl Row {
             let is_sep;
             #[allow(clippy::never_loop)]
             'outer: loop {
+                if let Some(delim) = in_string {
+                    if ch == '\\' {
+                        highlight_len += chars.next().map(|(_, ch)| ch.len_utf8()).unwrap_or(0);
+                    } else if ch == delim {
+                        in_string = None;
+                    }
+                    highlight = Highlight::String;
+                    is_sep = true;
+                    break;
+                }
+
+                if in_ml_comment {
+                    let (mcs, mce) = mc.unwrap();
+                    highlight = Highlight::MultiLineComment;
+                    if self.render[idx..].starts_with(mce) {
+                        in_ml_comment = false;
+                        for _ in mcs.chars().skip(1) {
+                            highlight_len += chars.next().unwrap().1.len_utf8();
+                        }
+                        assert!(highlight_len == mce.len());
+                    }
+                    is_sep = true;
+                    break;
+                }
+
                 if let Some(scs) = scs {
-                    if in_string.is_none() && !in_ml_comment && self.render[idx..].starts_with(scs)
-                    {
+                    if self.render[idx..].starts_with(scs) {
                         highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
                         highlight = Highlight::SingleLineComment;
                         is_sep = true;
@@ -122,20 +146,9 @@ impl Row {
                 }
 
                 if let Some((mcs, mce)) = mc {
-                    if in_ml_comment {
-                        highlight = Highlight::MultiLineComment;
-                        if self.render[idx..].starts_with(mce) {
-                            in_ml_comment = false;
-                            for _ in mcs.chars().skip(1) {
-                                highlight_len += chars.next().unwrap().1.len_utf8();
-                            }
-                            assert!(highlight_len == mce.len());
-                        }
-                        is_sep = true;
-                        break;
-                    } else if self.render[idx..].starts_with(mcs) {
-                        highlight = Highlight::MultiLineComment;
+                    if self.render[idx..].starts_with(mcs) {
                         in_ml_comment = true;
+                        highlight = Highlight::MultiLineComment;
                         for _ in mcs.chars().skip(1) {
                             highlight_len += chars.next().unwrap().1.len_utf8();
                         }
@@ -145,23 +158,11 @@ impl Row {
                     }
                 }
 
-                if syntax.string {
-                    if let Some(delim) = in_string {
-                        if ch == '\\' {
-                            highlight_len += chars.next().map(|(_, ch)| ch.len_utf8()).unwrap_or(0);
-                        } else if ch == delim {
-                            in_string = None;
-                        }
-                        highlight = Highlight::String;
-                        is_sep = true;
-                        break;
-                    }
-                    if ch == '"' || ch == '\'' {
-                        in_string = Some(ch);
-                        highlight = Highlight::String;
-                        is_sep = true;
-                        break;
-                    }
+                if syntax.string && (ch == '"' || ch == '\'') {
+                    in_string = Some(ch);
+                    highlight = Highlight::String;
+                    is_sep = true;
+                    break;
                 }
 
                 if syntax.number
