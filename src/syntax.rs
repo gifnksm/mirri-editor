@@ -30,7 +30,17 @@ const HLDB: &[Syntax] = &[
         number: true,
         single_line_comment: &["//"],
         multi_line_comment: &[("/*", "*/")],
-        string_literal: &[("\"", "\"", true), ("'", "'", true)],
+        string_literal: &[
+            ("'", "'", true),
+            ("L'", "'", true),
+            ("u'", "'", true),
+            ("U'", "'", true),
+            ("\"", "\"", true),
+            ("u8\"", "\"", true),
+            ("u\"", "\"", true),
+            ("U\"", "\"", true),
+            ("L\"", "\"", true),
+        ],
         keyword1: &[
             "switch", "if", "while", "for", "break", "continue", "return", "else", "struct",
             "union", "typedef", "static", "enum", "class", "case",
@@ -47,6 +57,7 @@ const HLDB: &[Syntax] = &[
         multi_line_comment: &[("/*", "*/")],
         string_literal: &[
             ("'", "'", true),
+            ("b'", "'", true),
             ("\"", "\"", true),
             ("r\"", "\"", false),
             ("r#\"", "\"#", false),
