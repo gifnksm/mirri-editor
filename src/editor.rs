@@ -1,7 +1,7 @@
 use crate::{
     file, input,
     row::Row,
-    syntax::{self, Syntax},
+    syntax::Syntax,
     terminal::{self, RawTerminal},
 };
 use snafu::{ResultExt, Snafu};
@@ -56,14 +56,14 @@ impl Editor {
             quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
-            syntax: syntax::select(None::<&str>),
+            syntax: Syntax::select(None::<&str>),
             term,
         })
     }
 
     fn set_filename(&mut self, filename: Option<PathBuf>) {
         self.filename = filename;
-        self.syntax = syntax::select(self.filename.as_ref());
+        self.syntax = Syntax::select(self.filename.as_ref());
         for row in &mut self.rows {
             row.invalidate_syntax();
         }
