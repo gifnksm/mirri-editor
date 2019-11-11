@@ -66,7 +66,7 @@ impl Row {
 
     pub(crate) fn update_syntax(
         &mut self,
-        syntax: &Syntax,
+        syntax: &'static Syntax,
         prev_row: Option<&mut Self>,
         next_row: Option<&mut Self>,
     ) {

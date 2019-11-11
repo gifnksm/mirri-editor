@@ -6,8 +6,9 @@ pub(crate) struct Syntax<'a> {
     pub(crate) filematch: &'a [&'a str],
     pub(crate) number: bool,
     pub(crate) string: bool,
-    pub(crate) singleline_comment_start: Option<&'a str>,
-    pub(crate) multiline_comment: Option<(&'a str, &'a str)>,
+    pub(crate) singleline_comment_start: &'a [&'a str],
+    pub(crate) multiline_comment: &'a [(&'a str, &'a str)],
+    pub(crate) string_literal: &'a [(&'a str, &'a str)],
     pub(crate) keyword1: &'a [&'a str],
     pub(crate) keyword2: &'a [&'a str],
 }
@@ -17,8 +18,9 @@ const DEFAULT: Syntax = Syntax {
     filematch: &[],
     number: false,
     string: false,
-    singleline_comment_start: None,
-    multiline_comment: None,
+    singleline_comment_start: &[],
+    multiline_comment: &[],
+    string_literal: &[],
     keyword1: &[],
     keyword2: &[],
 };
@@ -28,8 +30,9 @@ const HLDB: &[Syntax] = &[Syntax {
     filematch: &[".c", ".h", ".cpp"],
     number: true,
     string: true,
-    singleline_comment_start: Some("//"),
-    multiline_comment: Some(("/*", "*/")),
+    singleline_comment_start: &["//"],
+    multiline_comment: &[("/*", "*/")],
+    string_literal: &[("\"", "\""), ("'", "'")],
     keyword1: &[
         "switch", "if", "while", "for", "break", "continue", "return", "else", "struct", "union",
         "typedef", "static", "enum", "class", "case",
@@ -110,7 +113,7 @@ fn select_from_hldb(filename: Option<impl AsRef<Path>>) -> Option<&'static Synta
 #[derive(Debug, Clone)]
 pub(crate) struct SyntaxState {
     updated: bool,
-    open_comment: bool,
+    open_comment: Option<&'static str>,
     highlight: Vec<Highlight>,
 }
 
@@ -118,7 +121,7 @@ impl SyntaxState {
     pub(crate) fn new() -> Self {
         SyntaxState {
             updated: false,
-            open_comment: false,
+            open_comment: None,
             highlight: vec![],
         }
     }
@@ -138,7 +141,7 @@ impl SyntaxState {
     pub(crate) fn update(
         &mut self,
         render: &str,
-        syntax: &Syntax,
+        syntax: &'static Syntax,
         prev: Option<&mut SyntaxState>,
         next: Option<&mut SyntaxState>,
     ) {
@@ -151,10 +154,11 @@ impl SyntaxState {
 
         let scs = syntax.singleline_comment_start;
         let mc = syntax.multiline_comment;
+        let sl = syntax.string_literal;
 
         let mut prev_sep = true;
         let mut in_string: Option<&str> = None;
-        let mut in_ml_comment = prev.map(|state| state.open_comment).unwrap_or(false);
+        let mut in_ml_comment = prev.and_then(|state| state.open_comment);
         let keywords = syntax.keywords();
 
         let mut chars = render;
@@ -193,12 +197,11 @@ impl SyntaxState {
                     break;
                 }
 
-                if in_ml_comment {
-                    let (_mcs, mce) = mc.unwrap();
+                if let Some(mce) = in_ml_comment {
                     highlight = Highlight::MultiLineComment;
                     if let Some((idx, _)) = chars.match_indices(mce).next() {
                         highlight_len = idx + mce.len();
-                        in_ml_comment = false;
+                        in_ml_comment = None;
                     } else {
                         highlight_len = chars.len();
                     }
@@ -206,34 +209,32 @@ impl SyntaxState {
                     break;
                 }
 
-                if let Some(scs) = scs {
+                for scs in scs {
                     if chars.starts_with(scs) {
                         highlight = Highlight::SingleLineComment;
                         highlight_len = chars.len();
                         is_sep = true;
-                        break;
+                        break 'outer;
                     }
                 }
 
-                if let Some((mcs, _mce)) = mc {
+                for (mcs, mce) in mc {
                     if chars.starts_with(mcs) {
-                        in_ml_comment = true;
+                        in_ml_comment = Some(mce);
                         highlight = Highlight::MultiLineComment;
                         highlight_len = mcs.len();
                         is_sep = true;
-                        break;
+                        break 'outer;
                     }
                 }
 
-                if syntax.string {
-                    for &delim in &["\"", "'"] {
-                        if chars.starts_with(delim) {
-                            highlight = Highlight::String;
-                            highlight_len = delim.len();
-                            is_sep = true;
-                            in_string = Some(delim);
-                            break 'outer;
-                        }
+                for (sls, sle) in sl {
+                    if chars.starts_with(sls) {
+                        highlight = Highlight::String;
+                        highlight_len = sls.len();
+                        is_sep = true;
+                        in_string = Some(sle);
+                        break 'outer;
                     }
                 }
 
