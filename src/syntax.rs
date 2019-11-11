@@ -153,110 +153,130 @@ impl SyntaxState {
         let mc = syntax.multiline_comment;
 
         let mut prev_sep = true;
-        let mut prev_hl = Highlight::Normal;
-        let mut in_string = None;
+        let mut in_string: Option<&str> = None;
         let mut in_ml_comment = prev.map(|state| state.open_comment).unwrap_or(false);
         let keywords = syntax.keywords();
 
-        let mut chars = render.char_indices().fuse();
-        while let Some((idx, ch)) = chars.next() {
-            let mut highlight_len = ch.len_utf8();
+        let mut chars = render;
+        while !chars.is_empty() {
+            let highlight_len;
             let highlight;
             let is_sep;
             #[allow(clippy::never_loop)]
             'outer: loop {
                 if let Some(delim) = in_string {
-                    if ch == '\\' {
-                        highlight_len += chars.next().map(|(_, ch)| ch.len_utf8()).unwrap_or(0);
-                    } else if ch == delim {
-                        in_string = None;
+                    let mut found = None;
+                    let mut escaped = None;
+                    let dhead = delim.chars().next().unwrap();
+                    for (idx, m) in chars.match_indices(&[dhead, '\\'][..]) {
+                        if escaped == Some(idx) {
+                            continue;
+                        }
+                        if m.starts_with('\\') {
+                            escaped = Some(idx + '\\'.len_utf8());
+                            continue;
+                        }
+                        if m.starts_with(delim) {
+                            found = Some(idx + delim.len());
+                            break;
+                        }
                     }
+
                     highlight = Highlight::String;
+                    if let Some(len) = found {
+                        highlight_len = len;
+                        in_string = None;
+                    } else {
+                        highlight_len = chars.len();
+                    }
                     is_sep = true;
                     break;
                 }
 
                 if in_ml_comment {
-                    let (mcs, mce) = mc.unwrap();
+                    let (_mcs, mce) = mc.unwrap();
                     highlight = Highlight::MultiLineComment;
-                    if render[idx..].starts_with(mce) {
+                    if let Some((idx, _)) = chars.match_indices(mce).next() {
+                        highlight_len = idx + mce.len();
                         in_ml_comment = false;
-                        for _ in mcs.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == mce.len());
+                    } else {
+                        highlight_len = chars.len();
                     }
                     is_sep = true;
                     break;
                 }
 
                 if let Some(scs) = scs {
-                    if render[idx..].starts_with(scs) {
-                        highlight_len += chars.by_ref().map(|(_, ch)| ch.len_utf8()).sum::<usize>();
+                    if chars.starts_with(scs) {
                         highlight = Highlight::SingleLineComment;
+                        highlight_len = chars.len();
                         is_sep = true;
                         break;
                     }
                 }
 
-                if let Some((mcs, mce)) = mc {
-                    if render[idx..].starts_with(mcs) {
+                if let Some((mcs, _mce)) = mc {
+                    if chars.starts_with(mcs) {
                         in_ml_comment = true;
                         highlight = Highlight::MultiLineComment;
-                        for _ in mcs.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == mce.len());
+                        highlight_len = mcs.len();
                         is_sep = true;
                         break;
                     }
                 }
 
-                if syntax.string && (ch == '"' || ch == '\'') {
-                    in_string = Some(ch);
-                    highlight = Highlight::String;
-                    is_sep = true;
-                    break;
-                }
-
-                if syntax.number
-                    && (ch.is_digit(10) && (prev_sep || prev_hl == Highlight::Number)
-                        || (ch == '.' && prev_hl == Highlight::Number))
-                {
-                    highlight = Highlight::Number;
-                    is_sep = false;
-                    break;
+                if syntax.string {
+                    for &delim in &["\"", "'"] {
+                        if chars.starts_with(delim) {
+                            highlight = Highlight::String;
+                            highlight_len = delim.len();
+                            is_sep = true;
+                            in_string = Some(delim);
+                            break 'outer;
+                        }
+                    }
                 }
 
                 if prev_sep {
-                    let s = &render[idx..];
+                    if syntax.number {
+                        let t = chars.trim_start_matches(|ch: char| ch.is_digit(10));
+                        let match_len = chars.len() - t.len();
+                        if match_len > 0 {
+                            let t = t.trim_start_matches(|ch: char| ch.is_digit(10) || ch == '.');
+                            let match_len = chars.len() - t.len();
+                            highlight = Highlight::Number;
+                            highlight_len = match_len;
+                            is_sep = true;
+                            break;
+                        }
+                    }
+
                     for (kw, hl_ty) in keywords.clone() {
-                        if !s.starts_with(kw) {
+                        let t = chars.trim_start_matches(kw);
+                        let match_len = chars.len() - t.len();
+                        if match_len == 0 {
                             continue;
                         }
-                        let s = s.trim_start_matches(kw);
-                        if !s.is_empty() && !s.starts_with(is_separator) {
+                        if !t.is_empty() && !t.starts_with(is_separator) {
                             continue;
                         }
                         highlight = hl_ty;
+                        highlight_len = match_len;
                         is_sep = false;
-                        for _ in kw.chars().skip(1) {
-                            highlight_len += chars.next().unwrap().1.len_utf8();
-                        }
-                        assert!(highlight_len == kw.len());
                         break 'outer;
                     }
                 }
 
+                let ch = chars.chars().next().unwrap();
                 highlight = Highlight::Normal;
+                highlight_len = ch.len_utf8();
                 is_sep = is_separator(ch);
                 break;
             }
 
             self.highlight
                 .extend(iter::repeat(highlight).take(highlight_len));
-
-            prev_hl = highlight;
+            chars = &chars[highlight_len..];
             prev_sep = is_sep;
         }
 
