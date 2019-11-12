@@ -70,6 +70,22 @@ pub(crate) fn get_render_width(s: &str) -> usize {
     cur_col
 }
 
+pub(crate) fn get_cx_from_rx(s: &str, rx: usize) -> usize {
+    let mut buf = String::new();
+    let mut cur_col = 0;
+    for (idx, ch) in s.char_indices() {
+        if rx == cur_col {
+            return idx;
+        }
+        let (_, width) = render_char(ch, &s[idx..], cur_col, &mut buf);
+        if cur_col + width > rx {
+            return idx;
+        }
+        cur_col += width;
+    }
+    s.len()
+}
+
 fn render_char<'a>(
     ch: char,
     chars: &'a str,

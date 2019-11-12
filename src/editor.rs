@@ -1,5 +1,5 @@
 use crate::{
-    file, input,
+    file, input, output,
     row::Row,
     syntax::Syntax,
     terminal::{self, RawTerminal},
@@ -125,6 +125,11 @@ impl Editor {
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
         use CursorMove::*;
         let row = self.rows.get(self.cy);
+        enum YScroll {
+            Up(usize),
+            Down(usize),
+        }
+        let mut y_scroll = None;
         match mv {
             Left => {
                 if let Some(ch) = row.and_then(|row| row.chars[..self.cx].chars().next_back()) {
@@ -144,47 +149,49 @@ impl Editor {
                     }
                 }
             }
-            Up => {
-                if self.cy > 0 {
-                    self.cy -= 1
-                }
-            }
-            Down => {
-                if self.cy + 1 < self.rows.len() {
-                    self.cy += 1
-                }
-            }
             Home => self.cx = 0,
             End => {
                 if let Some(row) = row {
                     self.cx = row.chars.len();
                 }
             }
-            PageUp => {
-                self.cy = self.row_off;
-                for _ in 0..self.screen_rows {
-                    self.move_cursor(CursorMove::Up);
-                }
-            }
+            Up => y_scroll = Some(YScroll::Up(1)),
+            Down => y_scroll = Some(YScroll::Down(1)),
+            PageUp => y_scroll = Some(YScroll::Up((self.row_off - self.cy) + self.screen_rows)),
             PageDown => {
-                self.cy = self.row_off + self.screen_rows - 1;
-                if self.cy + 1 > self.rows.len() {
-                    if self.rows.is_empty() {
-                        self.cy = 0;
-                    } else {
-                        self.cy = self.rows.len() - 1;
-                    }
-                }
-                for _ in 0..self.screen_rows {
-                    self.move_cursor(CursorMove::Down);
-                }
+                y_scroll = Some(YScroll::Down(
+                    (self.row_off + self.screen_rows - 1 - self.cy) + self.screen_rows,
+                ))
             }
         }
 
-        let row = self.rows.get(self.cy);
-        let row_len = row.map(|r| r.chars.len()).unwrap_or(0);
-        if self.cx > row_len {
-            self.cx = row_len;
+        if let Some(scroll) = y_scroll {
+            // Adjust cursor x position to the nearest char boundary in rendered texts
+            let rx = self
+                .rows
+                .get(self.cy)
+                .map(|row| output::get_render_width(&row.chars[..self.cx]))
+                .unwrap_or(0);
+            match scroll {
+                YScroll::Up(dy) => {
+                    if self.cy < dy {
+                        self.cy = 0;
+                    } else {
+                        self.cy -= dy;
+                    }
+                }
+                YScroll::Down(dy) => {
+                    self.cy += dy;
+                    if self.cy >= self.rows.len() {
+                        self.cy = self.rows.len();
+                    }
+                }
+            }
+            self.cx = self
+                .rows
+                .get(self.cy)
+                .map(|row| output::get_cx_from_rx(&row.chars, rx))
+                .unwrap_or(0);
         }
     }
 
