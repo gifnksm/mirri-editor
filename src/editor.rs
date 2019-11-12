@@ -19,6 +19,18 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub(crate) const QUIT_TIMES: usize = 3;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) enum CursorMove {
+    Up,
+    Down,
+    Left,
+    Right,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+}
+
 #[derive(Debug)]
 pub(crate) struct Editor {
     pub(crate) cx: usize,
@@ -112,6 +124,72 @@ impl Editor {
         Ok(())
     }
 
+    pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
+        use CursorMove::*;
+        let row = self.rows.get(self.cy);
+        match mv {
+            Left => {
+                if let Some(ch) = row.and_then(|row| row.chars[..self.cx].chars().next_back()) {
+                    self.cx -= ch.len_utf8();
+                } else if self.cy > 0 {
+                    self.cy -= 1;
+                    self.cx = self.rows[self.cy].chars.len();
+                }
+            }
+            Right => {
+                if let Some(row) = row {
+                    if let Some(ch) = row.chars[self.cx..].chars().next() {
+                        self.cx += ch.len_utf8();
+                    } else {
+                        self.cy += 1;
+                        self.cx = 0;
+                    }
+                }
+            }
+            Up => {
+                if self.cy > 0 {
+                    self.cy -= 1
+                }
+            }
+            Down => {
+                if self.cy + 1 < self.rows.len() {
+                    self.cy += 1
+                }
+            }
+            Home => self.cx = 0,
+            End => {
+                if let Some(row) = row {
+                    self.cx = row.chars.len();
+                }
+            }
+            PageUp => {
+                self.cy = self.row_off;
+                for _ in 0..self.screen_rows {
+                    self.move_cursor(CursorMove::Up);
+                }
+            }
+            PageDown => {
+                self.cy = self.row_off + self.screen_rows - 1;
+                if self.cy + 1 > self.rows.len() {
+                    if self.rows.is_empty() {
+                        self.cy = 0;
+                    } else {
+                        self.cy = self.rows.len() - 1;
+                    }
+                }
+                for _ in 0..self.screen_rows {
+                    self.move_cursor(CursorMove::Down);
+                }
+            }
+        }
+
+        let row = self.rows.get(self.cy);
+        let row_len = row.map(|r| r.chars.len()).unwrap_or(0);
+        if self.cx > row_len {
+            self.cx = row_len;
+        }
+    }
+
     pub(crate) fn insert_row(&mut self, at: usize, s: String) {
         self.rows.insert(at, Row::new(s));
         self.dirty = true;
@@ -136,7 +214,7 @@ impl Editor {
             self.append_row("".into());
         }
         self.rows[self.cy].insert_char(self.cx, ch);
-        self.cx += 1;
+        self.move_cursor(CursorMove::Right);
         self.dirty = true;
     }
 
@@ -147,27 +225,26 @@ impl Editor {
         } else {
             self.append_row("".into());
         }
-        self.cy += 1;
-        self.cx = 0;
+        self.move_cursor(CursorMove::Right);
         self.dirty = true;
     }
 
+    pub(crate) fn delete_back_char(&mut self) {
+        self.move_cursor(CursorMove::Left);
+        self.delete_char();
+    }
+
     pub(crate) fn delete_char(&mut self) {
-        if self.cx > 0 {
-            if let Some(row) = self.rows.get_mut(self.cy) {
-                row.delete_char(self.cx - 1);
-                self.cx -= 1;
-                self.dirty = true;
-            }
-        } else {
-            let (left, right) = self.rows.split_at_mut(self.cy);
-            if let (Some(prev), Some(row)) = (left.last_mut(), right.first_mut()) {
-                self.cx = prev.chars.len();
-                prev.append_str(&row.chars);
-                self.delete_row(self.cy);
-                self.cy -= 1;
-                self.dirty = true;
-            }
+        let (left, right) = self.rows.split_at_mut(self.cy + 1);
+        let cur = left.last_mut().unwrap();
+        let next = right.first();
+        if self.cx < cur.chars.len() {
+            cur.delete_char(self.cx);
+            self.dirty = true;
+        } else if let Some(next) = next {
+            cur.append_str(&next.chars);
+            self.delete_row(self.cy + 1);
+            self.dirty = true;
         }
     }
 }
