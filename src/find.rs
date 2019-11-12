@@ -45,28 +45,26 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                 }
             }
 
-            let (mut y, mut sx, mut ex) = last_match.unwrap_or((editor.cy, editor.rx, editor.rx));
+            let (mut y, mut sx, mut ex) = last_match.unwrap_or((editor.cy, editor.cx, editor.cx));
             for _ in 0..editor.rows.len() {
                 let [prev, row, next] = editor.rows.get3_mut(y);
                 let row = row.unwrap();
-                row.update_render();
                 row.update_syntax(editor.syntax, prev, next);
 
                 let (idx_off, res) = if is_forward {
-                    (ex, row.render()[ex..].match_indices(query.as_str()).next())
+                    (ex, row.chars[ex..].match_indices(query.as_str()).next())
                 } else {
-                    (0, row.render()[..sx].rmatch_indices(query.as_str()).next())
+                    (0, row.chars[..sx].rmatch_indices(query.as_str()).next())
                 };
 
                 if let Some((dx, s)) = res {
-                    let rx = idx_off + dx;
+                    let cx = idx_off + dx;
                     let s_len = s.len();
-                    last_match = Some((y, rx, rx + s.len()));
+                    last_match = Some((y, cx, cx + s.len()));
                     editor.cy = y;
-                    editor.cx = row.rx_to_cx(rx);
-                    editor.row_off = row.render().len();
+                    editor.cx = cx;
                     saved_hl = Some((y, row.highlight().into()));
-                    for hl in &mut row.highlight_mut()[rx..rx + s_len] {
+                    for hl in &mut row.highlight_mut()[cx..cx + s_len] {
                         *hl = Highlight::Match
                     }
                     break;
@@ -81,8 +79,7 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                 }
 
                 let row = &mut editor.rows[y];
-                row.update_render();
-                sx = row.render().len();
+                sx = row.chars.len();
                 ex = 0;
             }
         },

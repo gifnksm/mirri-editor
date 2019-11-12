@@ -148,8 +148,13 @@ impl<'s> Syntax<'s> {
                     (Highlight::Keyword2, len)
                 } else {
                     let ch = chars.chars().next().unwrap();
+                    let hl = if ch.is_control() {
+                        Highlight::ControlCharacter
+                    } else {
+                        Highlight::Normal
+                    };
                     *prev_sep = is_separator(ch);
-                    (Highlight::Normal, ch.len_utf8())
+                    (hl, ch.len_utf8())
                 }
             }
         }
@@ -270,6 +275,7 @@ impl<'s> Syntax<'s> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Highlight {
     Normal,
+    ControlCharacter,
     SingleLineComment,
     MultiLineComment,
     Keyword1,
@@ -280,15 +286,16 @@ pub(crate) enum Highlight {
 }
 
 impl Highlight {
-    pub(crate) fn to_color(self) -> u32 {
+    pub(crate) fn to_color(self) -> (u32, u32) {
         match self {
-            Self::Normal => 37,
-            Self::SingleLineComment | Self::MultiLineComment => 36,
-            Self::Keyword1 => 33,
-            Self::Keyword2 => 32,
-            Self::String => 35,
-            Self::Number => 31,
-            Self::Match => 34,
+            Self::Normal => (37, 47),
+            Self::ControlCharacter => (30, 47),
+            Self::SingleLineComment | Self::MultiLineComment => (36, 40),
+            Self::Keyword1 => (33, 40),
+            Self::Keyword2 => (32, 40),
+            Self::String => (35, 40),
+            Self::Number => (31, 40),
+            Self::Match => (34, 40),
         }
     }
 }

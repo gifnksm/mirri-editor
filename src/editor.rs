@@ -35,7 +35,6 @@ pub(crate) enum CursorMove {
 pub(crate) struct Editor {
     pub(crate) cx: usize,
     pub(crate) cy: usize,
-    pub(crate) rx: usize,
     pub(crate) screen_cols: usize,
     pub(crate) screen_rows: usize,
     pub(crate) row_off: usize,
@@ -58,7 +57,6 @@ impl Editor {
         Ok(Editor {
             cx: 0,
             cy: 0,
-            rx: 0,
             screen_rows,
             screen_cols,
             row_off: 0,

@@ -3,8 +3,12 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
     ffi::OsStr,
+    fmt::Write as _,
     io::{self, Write},
 };
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+const TAB_STOP: usize = 8;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -34,9 +38,9 @@ pub(crate) fn clear_screen(editor: &mut Editor) -> Result<()> {
     Ok(())
 }
 
-fn scroll(editor: &mut Editor) {
-    editor.rx = if let Some(row) = editor.rows.get(editor.cy) {
-        row.cx_to_rx(editor.cx)
+fn scroll(editor: &mut Editor) -> usize {
+    let rx = if let Some(row) = editor.rows.get(editor.cy) {
+        get_render_width(&row.chars[..editor.cx])
     } else {
         0
     };
@@ -47,21 +51,57 @@ fn scroll(editor: &mut Editor) {
     if editor.cy >= editor.row_off + editor.screen_rows {
         editor.row_off = editor.cy - editor.screen_rows + 1;
     }
-    if editor.rx < editor.col_off {
-        editor.col_off = editor.rx;
+    if rx < editor.col_off {
+        editor.col_off = rx;
     }
-    if editor.rx >= editor.col_off + editor.screen_cols {
-        editor.col_off = editor.rx - editor.screen_cols + 1;
+    if rx >= editor.col_off + editor.screen_cols {
+        editor.col_off = rx - editor.screen_cols + 1;
     }
+    rx
+}
+
+pub(crate) fn get_render_width(s: &str) -> usize {
+    let mut buf = String::new();
+    let mut cur_col = 0;
+    for (idx, ch) in s.char_indices() {
+        let (_, width) = render_char(ch, &s[idx..], cur_col, &mut buf);
+        cur_col += width;
+    }
+    cur_col
+}
+
+fn render_char<'a>(
+    ch: char,
+    chars: &'a str,
+    cur_col: usize,
+    buf: &'a mut String,
+) -> (&'a str, usize) {
+    if ch == '\t' {
+        let width = TAB_STOP - cur_col % TAB_STOP;
+        buf.clear();
+        write!(buf, "{:w$}", "", w = width).unwrap();
+        return (buf, width);
+    }
+    if ch.is_ascii_control() {
+        let val = ((ch as u8) + b'@') as char;
+        buf.clear();
+        write!(buf, "^{}", val).unwrap();
+        return (buf, 2);
+    }
+    if ch.is_control() {
+        buf.clear();
+        write!(buf, "{}", ch.escape_debug()).unwrap(); // TODO: write appropriate representation
+        return (buf, buf.width()); // TODO: select width_cjk() or width()
+    }
+    let len = ch.len_utf8();
+    (&chars[..len], ch.width().unwrap()) // TODO: select width_cjk() or width()
 }
 
 fn draw_rows(editor: &mut Editor) -> Result<()> {
-    scroll(editor);
-
     for y in 0..editor.screen_rows {
         let file_row = y + editor.row_off;
         if file_row >= editor.rows.len() {
-            if y == editor.screen_rows / 3 {
+            if editor.rows.is_empty() && y == editor.screen_rows / 3 {
                 let welcome = format!(
                     "{} -- version {}",
                     env!("CARGO_PKG_DESCRIPTION"),
@@ -80,41 +120,48 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
         } else {
             let [prev, row, next] = editor.rows.get3_mut(file_row);
             let row = row.unwrap();
-            row.update_render();
             row.update_syntax(editor.syntax, prev, next);
-            let render = row.render();
-            let hl = row.highlight();
 
+            let mut buf = String::new();
+            let mut current_col = 0;
             let mut current_color = None;
-            if render.len() > editor.col_off {
-                for (idx, ch) in render
-                    [editor.col_off..cmp::min(editor.col_off + editor.screen_cols, render.len())]
-                    .char_indices()
-                {
-                    let hl = hl[idx];
-                    if ch.is_control() {
-                        let ch = ch as u8;
-                        let ch = if ch < 26 { (ch + b'@') as char } else { '?' };
-                        write!(&mut editor.term, "\x1b[7m{}\x1b[m", ch).context(TerminalOutput)?;
-                        if let Some(color) = current_color {
-                            write!(&mut editor.term, "\x1b[{}m", color).context(TerminalOutput)?;
-                        }
-                    } else if hl == Highlight::Normal {
-                        if current_color.is_some() {
-                            current_color = None;
-                            write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
-                        }
-                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
-                    } else {
-                        let color = hl.to_color();
-                        if current_color != Some(color) {
-                            current_color = Some(color);
-                            write!(&mut editor.term, "\x1b[{}m", color).context(TerminalOutput)?;
-                        }
-                        write!(&mut editor.term, "{}", ch).context(TerminalOutput)?;
+            for (idx, ch) in row.chars.char_indices() {
+                let hl = row.highlight()[idx];
+                let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
+
+                let (scr_s, scr_e) = (editor.col_off, editor.col_off + editor.screen_cols);
+                let (col_s, col_e) = (current_col, current_col + width);
+                current_col += width;
+                if col_e <= scr_s || col_s >= scr_e {
+                    continue;
+                }
+                if hl == Highlight::Normal {
+                    if current_color.is_some() {
+                        current_color = None;
+                        write!(&mut editor.term, "\x1b[39;49m").context(TerminalOutput)?;
+                    }
+                } else {
+                    let color = hl.to_color();
+                    if current_color != Some(color) {
+                        current_color = Some(color);
+                        write!(&mut editor.term, "\x1b[{};{}m", color.0, color.1)
+                            .context(TerminalOutput)?;
                     }
                 }
-                write!(&mut editor.term, "\x1b[39m").context(TerminalOutput)?;
+                if col_s < scr_s {
+                    let width = col_e - scr_s;
+                    write!(&mut editor.term, "{:w$}", "", w = width).context(TerminalOutput)?;
+                    continue;
+                }
+                if col_e > scr_e {
+                    let width = scr_e - col_s;
+                    write!(&mut editor.term, "{:w$}", "", w = width).context(TerminalOutput)?;
+                    continue;
+                }
+                write!(&mut editor.term, "{}", render).context(TerminalOutput)?;
+            }
+            if current_color.is_some() {
+                write!(&mut editor.term, "\x1b[39;49m").context(TerminalOutput)?;
             }
         }
 
@@ -189,6 +236,8 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
     write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
     write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
+    let rx = scroll(editor);
+
     draw_rows(editor)?;
     draw_status_bar(editor)?;
     draw_message_bar(editor)?;
@@ -197,7 +246,7 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
         &mut editor.term,
         "\x1b[{};{}H",
         (editor.cy - editor.row_off) + 1,
-        (editor.rx - editor.col_off) + 1
+        (rx - editor.col_off) + 1
     )
     .context(TerminalOutput)?; // move cursor
     write!(&mut editor.term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
