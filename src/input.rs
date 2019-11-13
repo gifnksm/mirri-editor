@@ -37,9 +37,24 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                     }
                     return Ok(true);
                 }
+                Char('P') => editor.move_cursor(CursorMove::Up),
+                Char('N') => editor.move_cursor(CursorMove::Down),
+                Char('B') => editor.move_cursor(CursorMove::Left),
+                Char('F') => editor.move_cursor(CursorMove::Right),
+                Char('A') => editor.move_cursor(CursorMove::Home),
+                Char('E') => editor.move_cursor(CursorMove::End),
+                Char('V') => editor.move_cursor(CursorMove::PageDown),
                 Char('S') => editor.save()?,
-                Char('F') => find::find(editor)?,
+                Char('G') => find::find(editor)?,
                 Char('H') => editor.delete_back_char(),
+                _ => {}
+            },
+            Input {
+                key,
+                ctrl: false,
+                alt: true,
+            } => match key {
+                Char('v') => editor.move_cursor(CursorMove::PageUp),
                 _ => {}
             },
             Input {

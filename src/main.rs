@@ -36,7 +36,7 @@ struct Opt {
 fn run() -> Result<()> {
     let opt = Opt::from_args();
     let mut editor = Editor::new().context(EditorError)?;
-    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
+    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 
     if let Some(file) = &opt.file {
         editor.open(file);
