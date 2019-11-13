@@ -9,6 +9,7 @@ mod find;
 mod input;
 mod output;
 mod row;
+mod signal;
 mod syntax;
 mod terminal;
 mod util;

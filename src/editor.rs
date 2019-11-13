@@ -35,8 +35,6 @@ pub(crate) enum CursorMove {
 pub(crate) struct Editor {
     pub(crate) cx: usize,
     pub(crate) cy: usize,
-    pub(crate) screen_cols: usize,
-    pub(crate) screen_rows: usize,
     pub(crate) row_off: usize,
     pub(crate) col_off: usize,
     pub(crate) rows: Vec<Row>,
@@ -50,15 +48,11 @@ pub(crate) struct Editor {
 
 impl Editor {
     pub(crate) fn new() -> Result<Self> {
-        let mut term = RawTerminal::new().context(TerminalError)?;
-        let (screen_cols, mut screen_rows) = term.get_window_size().context(TerminalError)?;
-        screen_rows -= 2; // status bar height + message bar height
+        let term = RawTerminal::new().context(TerminalError)?;
 
         Ok(Editor {
             cx: 0,
             cy: 0,
-            screen_rows,
-            screen_cols,
             row_off: 0,
             col_off: 0,
             rows: vec![],
@@ -157,10 +151,14 @@ impl Editor {
             }
             Up => y_scroll = Some(YScroll::Up(1)),
             Down => y_scroll = Some(YScroll::Down(1)),
-            PageUp => y_scroll = Some(YScroll::Up((self.cy - self.row_off) + self.screen_rows)),
+            PageUp => {
+                y_scroll = Some(YScroll::Up(
+                    (self.cy - self.row_off) + self.term.screen_rows,
+                ))
+            }
             PageDown => {
                 y_scroll = Some(YScroll::Down(
-                    (self.row_off + (self.screen_rows - 1) - self.cy) + self.screen_rows,
+                    (self.row_off + (self.term.screen_rows - 1) - self.cy) + self.term.screen_rows,
                 ))
             }
         }

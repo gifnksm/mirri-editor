@@ -1,3 +1,4 @@
+use crate::signal::SignalReceiver;
 use smallvec::SmallVec;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
@@ -12,6 +13,11 @@ use termios::Termios;
 pub(crate) enum Error {
     #[snafu(display("Could not enter raw mode: {}", source))]
     EnterRawMode {
+        source: io::Error,
+        backtrace: Backtrace,
+    },
+    #[snafu(display("Could not initialize signal receiver: {:?}", source))]
+    SignalReceiverInit {
         source: io::Error,
         backtrace: Backtrace,
     },
@@ -55,8 +61,11 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 pub(crate) struct RawTerminal {
     stdin: Stdin,
     stdout: Stdout,
-    orig: Termios,
-    buf: String,
+    pub(crate) screen_cols: usize,
+    pub(crate) screen_rows: usize,
+    sigwinch_receiver: SignalReceiver,
+    orig_termios: Termios,
+    read_buf: String,
 }
 
 impl RawTerminal {
@@ -68,7 +77,7 @@ impl RawTerminal {
 
         let fd = stdin.as_raw_fd();
         let mut raw = Termios::from_fd(fd).context(EnterRawMode)?;
-        let orig = raw;
+        let orig_termios = raw;
 
         // See termios(3) for detail.
 
@@ -101,12 +110,19 @@ impl RawTerminal {
 
         tcsetattr(fd, TCSAFLUSH, &raw).context(EnterRawMode)?;
 
-        Ok(Self {
+        let sigwinch_receiver = SignalReceiver::new_sigwinch().context(SignalReceiverInit)?;
+
+        let mut term = Self {
             stdin,
             stdout,
-            orig,
-            buf: String::new(),
-        })
+            screen_cols: 0,
+            screen_rows: 0,
+            sigwinch_receiver,
+            orig_termios,
+            read_buf: String::new(),
+        };
+        term.update_screen_size()?;
+        Ok(term)
     }
 
     fn read_byte(&mut self) -> Result<Option<u8>> {
@@ -155,17 +171,17 @@ impl RawTerminal {
         match self.read_char()? {
             None => Ok(None),
             Some(esc @ '\x1b') => {
-                self.buf.clear();
-                self.buf.push(esc);
+                self.read_buf.clear();
+                self.read_buf.push(esc);
                 let ch = match self.read_char()? {
                     Some(ch) => ch,
                     None => return Ok(Some(Char('\x1b'))),
                 };
                 match ch {
                     '[' => {
-                        self.buf.push(ch);
+                        self.read_buf.push(ch);
                         while let Some(ch) = self.read_char()? {
-                            self.buf.push(ch);
+                            self.read_buf.push(ch);
                             match ch {
                                 'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
                                 _ => continue,
@@ -173,14 +189,14 @@ impl RawTerminal {
                         }
                     }
                     'O' => {
-                        self.buf.push(ch);
+                        self.read_buf.push(ch);
                         if let Some(ch) = self.read_char()? {
-                            self.buf.push(ch);
+                            self.read_buf.push(ch);
                         }
                     }
                     _ => {}
                 }
-                let key = match &self.buf[..] {
+                let key = match &self.read_buf[..] {
                     "\x1b[1~" | "\x1b[7~" | "\x1b[H" | "\x1bOH" => Home,
                     "\x1b[3~" => Delete,
                     "\x1b[4~" | "\x1b[8~" | "\x1b[F" | "\x1bOF" => End,
@@ -199,7 +215,21 @@ impl RawTerminal {
         }
     }
 
-    pub(crate) fn get_window_size(&mut self) -> Result<(usize, usize)> {
+    pub(crate) fn maybe_update_screen_size(&mut self) -> Result<()> {
+        if self.sigwinch_receiver.received() {
+            self.update_screen_size()?;
+        }
+        Ok(())
+    }
+
+    fn update_screen_size(&mut self) -> Result<()> {
+        let (screen_cols, screen_rows) = self.get_window_size()?;
+        self.screen_cols = screen_cols;
+        self.screen_rows = screen_rows - 2; // status bar height + message bar height
+        Ok(())
+    }
+
+    fn get_window_size(&mut self) -> Result<(usize, usize)> {
         if let Some(sz) = term_size::dimensions() {
             return Ok(sz);
         }
@@ -214,15 +244,15 @@ impl RawTerminal {
         self.stdout.flush().context(TerminalOutput)?;
 
         // Read the cursor position
-        self.buf.clear();
+        self.read_buf.clear();
         while let Some(ch) = self.read_char()? {
-            self.buf.push(ch);
+            self.read_buf.push(ch);
             if ch == 'R' {
                 break;
             }
         }
 
-        let s = self.buf.trim_end_matches('R');
+        let s = self.read_buf.trim_end_matches('R');
         if s.starts_with("\x1b[") {
             let s = s.trim_start_matches("\x1b[");
             let mut it = s.split(';');
@@ -235,7 +265,7 @@ impl RawTerminal {
         }
 
         UnexpectedEscapeSequence {
-            seq: mem::replace(&mut self.buf, String::new()),
+            seq: mem::replace(&mut self.read_buf, String::new()),
         }
         .fail()
     }
@@ -245,7 +275,7 @@ impl Drop for RawTerminal {
     fn drop(&mut self) {
         use termios::*;
         let fd = self.stdin.as_raw_fd();
-        tcsetattr(fd, TCSAFLUSH, &self.orig).expect("failed to restore terminal mode");
+        tcsetattr(fd, TCSAFLUSH, &self.orig_termios).expect("failed to restore terminal mode");
     }
 }
 

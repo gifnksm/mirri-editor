@@ -1,4 +1,4 @@
-use crate::{editor::Editor, syntax::Highlight, util::SliceExt};
+use crate::{editor::Editor, syntax::Highlight, terminal, util::SliceExt};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
@@ -15,6 +15,11 @@ pub(crate) enum Error {
     #[snafu(display("Could not output to terminal: {}", source))]
     TerminalOutput {
         source: io::Error,
+        backtrace: Backtrace,
+    },
+    #[snafu(display("{}", source))]
+    Terminal {
+        source: terminal::Error,
         backtrace: Backtrace,
     },
 }
@@ -48,14 +53,14 @@ fn scroll(editor: &mut Editor) -> usize {
     if editor.row_off > editor.cy {
         editor.row_off = editor.cy;
     }
-    if editor.row_off + (editor.screen_rows - 1) < editor.cy {
-        editor.row_off = editor.cy - (editor.screen_rows - 1);
+    if editor.row_off + (editor.term.screen_rows - 1) < editor.cy {
+        editor.row_off = editor.cy - (editor.term.screen_rows - 1);
     }
     if editor.col_off > rx {
         editor.col_off = rx;
     }
-    if editor.col_off + (editor.screen_cols - 1) < rx {
-        editor.col_off = rx - (editor.screen_cols - 1);
+    if editor.col_off + (editor.term.screen_cols - 1) < rx {
+        editor.col_off = rx - (editor.term.screen_cols - 1);
     }
     rx
 }
@@ -114,19 +119,19 @@ fn render_char<'a>(
 }
 
 fn draw_rows(editor: &mut Editor) -> Result<()> {
-    for y in 0..editor.screen_rows {
+    for y in 0..editor.term.screen_rows {
         let file_row = y + editor.row_off;
         if file_row >= editor.rows.len() {
-            if editor.rows.is_empty() && y == editor.screen_rows / 3 {
+            if editor.rows.is_empty() && y == editor.term.screen_rows / 3 {
                 let welcome = format!(
                     "{} -- version {}",
                     env!("CARGO_PKG_DESCRIPTION"),
                     env!("CARGO_PKG_VERSION")
                 );
-                let mut width = editor.screen_cols;
-                if welcome.len() < editor.screen_cols {
+                let mut width = editor.term.screen_cols;
+                if welcome.len() < editor.term.screen_cols {
                     write!(&mut editor.term, "~").context(TerminalOutput)?;
-                    width = editor.screen_cols - 1
+                    width = editor.term.screen_cols - 1
                 }
                 write!(&mut editor.term, "{:^w$.p$}", welcome, w = width, p = width)
                     .context(TerminalOutput)?;
@@ -145,7 +150,7 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                 let hl = row.highlight()[idx];
                 let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
 
-                let (scr_s, scr_e) = (editor.col_off, editor.col_off + editor.screen_cols);
+                let (scr_s, scr_e) = (editor.col_off, editor.col_off + editor.term.screen_cols);
                 let (col_s, col_e) = (current_col, current_col + width);
                 current_col += width;
                 if col_e <= scr_s || col_s >= scr_e {
@@ -216,9 +221,9 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         editor.rows.len()
     );
 
-    let l_width = cmp::min(l_status.len(), editor.screen_cols);
-    let r_width = cmp::min(r_status.len(), editor.screen_cols - l_width);
-    let sep_width = editor.screen_cols - l_width - r_width;
+    let l_width = cmp::min(l_status.len(), editor.term.screen_cols);
+    let r_width = cmp::min(r_status.len(), editor.term.screen_cols - l_width);
+    let sep_width = editor.term.screen_cols - l_width - r_width;
 
     write!(
         &mut editor.term,
@@ -239,8 +244,8 @@ fn draw_message_bar(editor: &mut Editor) -> Result<()> {
     write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
     if let Some((time, msg)) = &mut editor.status_msg {
         if time.elapsed().as_secs() < 5 {
-            write!(&mut editor.term, "{:.w$}", msg, w = editor.screen_cols)
-                .context(TerminalOutput)?;
+            let cols = editor.term.screen_cols;
+            write!(&mut editor.term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
         } else {
             editor.status_msg = None;
         }
@@ -249,6 +254,7 @@ fn draw_message_bar(editor: &mut Editor) -> Result<()> {
 }
 
 pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
+    editor.term.maybe_update_screen_size().context(Terminal)?;
     write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
     write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 

@@ -17,3 +17,4 @@ snafu = { version = "0.6.0", features = ["backtraces"] }
 term_size = "0.3.1"
 structopt = "0.3.4"
 unicode-width = "0.1.6"
+signal-hook = "0.1.11"
