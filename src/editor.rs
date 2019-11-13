@@ -157,10 +157,10 @@ impl Editor {
             }
             Up => y_scroll = Some(YScroll::Up(1)),
             Down => y_scroll = Some(YScroll::Down(1)),
-            PageUp => y_scroll = Some(YScroll::Up((self.row_off - self.cy) + self.screen_rows)),
+            PageUp => y_scroll = Some(YScroll::Up((self.cy - self.row_off) + self.screen_rows)),
             PageDown => {
                 y_scroll = Some(YScroll::Down(
-                    (self.row_off + self.screen_rows - 1 - self.cy) + self.screen_rows,
+                    (self.row_off + (self.screen_rows - 1) - self.cy) + self.screen_rows,
                 ))
             }
         }

@@ -45,17 +45,17 @@ fn scroll(editor: &mut Editor) -> usize {
         0
     };
 
-    if editor.cy < editor.row_off {
+    if editor.row_off > editor.cy {
         editor.row_off = editor.cy;
     }
-    if editor.cy >= editor.row_off + editor.screen_rows {
-        editor.row_off = editor.cy - editor.screen_rows + 1;
+    if editor.row_off + (editor.screen_rows - 1) < editor.cy {
+        editor.row_off = editor.cy - (editor.screen_rows - 1);
     }
-    if rx < editor.col_off {
+    if editor.col_off > rx {
         editor.col_off = rx;
     }
-    if rx >= editor.col_off + editor.screen_cols {
-        editor.col_off = rx - editor.screen_cols + 1;
+    if editor.col_off + (editor.screen_cols - 1) < rx {
+        editor.col_off = rx - (editor.screen_cols - 1);
     }
     rx
 }
