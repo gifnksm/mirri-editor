@@ -59,14 +59,23 @@ pub(crate) enum Key {
 pub(crate) struct Input {
     pub(crate) key: Key,
     pub(crate) ctrl: bool,
+    pub(crate) alt: bool,
 }
 
 impl Input {
     fn new(key: Key) -> Self {
-        Input { key, ctrl: false }
+        Input {
+            key,
+            ctrl: false,
+            alt: false,
+        }
     }
     fn ctrl(key: Key) -> Self {
-        Input { key, ctrl: true }
+        Input {
+            key,
+            ctrl: true,
+            alt: false,
+        }
     }
 }
 
@@ -80,6 +89,7 @@ pub(crate) struct RawTerminal {
     pub(crate) screen_rows: usize,
     sigwinch_receiver: SignalReceiver,
     orig_termios: Termios,
+    unread_char: Option<char>,
     read_buf: String,
 }
 
@@ -134,6 +144,7 @@ impl RawTerminal {
             screen_rows: 0,
             sigwinch_receiver,
             orig_termios,
+            unread_char: None,
             read_buf: String::new(),
         };
         term.update_screen_size()?;
@@ -151,6 +162,9 @@ impl RawTerminal {
     }
 
     fn read_char(&mut self) -> Result<Option<char>> {
+        if let Some(ch) = self.unread_char.take() {
+            return Ok(Some(ch));
+        }
         let mut bytes = SmallVec::<[u8; 4]>::new();
         match self.read_byte()? {
             Some(b) => bytes.push(b),
@@ -180,6 +194,11 @@ impl RawTerminal {
         Ok(dbg!(ch))
     }
 
+    fn set_unread_char(&mut self, ch: char) {
+        assert!(self.unread_char.is_none());
+        self.unread_char = Some(ch);
+    }
+
     pub(crate) fn read_input(&mut self) -> Result<Option<Input>> {
         use Key::*;
 
@@ -201,6 +220,13 @@ impl RawTerminal {
                             _ => continue,
                         }
                     }
+                } else {
+                    self.set_unread_char(ch);
+                    let mut input = self.read_input()?;
+                    if let Some(input) = &mut input {
+                        input.alt = true;
+                    }
+                    return Ok(input);
                 }
                 let key = match &self.read_buf[..] {
                     "\x1b[1~" | "\x1b[7~" | "\x1b[H" => Home,

@@ -20,7 +20,11 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
 
     if let Some(input) = editor.term.read_input().context(TerminalError)? {
         match dbg!(input) {
-            Input { key, ctrl: true } => match key {
+            Input {
+                key,
+                ctrl: true,
+                alt: false,
+            } => match key {
                 Char('M') => editor.insert_newline(), // Ctrl-M : \r
                 Char('Q') => {
                     if editor.dirty && editor.quit_times > 0 {
@@ -38,7 +42,11 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Char('H') => editor.delete_back_char(),
                 _ => {}
             },
-            Input { key, ctrl: false } => match key {
+            Input {
+                key,
+                ctrl: false,
+                alt: false,
+            } => match key {
                 ArrowUp => editor.move_cursor(CursorMove::Up),
                 ArrowDown => editor.move_cursor(CursorMove::Down),
                 ArrowLeft => editor.move_cursor(CursorMove::Left),
@@ -51,6 +59,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Backspace => editor.delete_back_char(),
                 Char(ch) => editor.insert_char(ch),
             },
+            _ => {}
         }
 
         editor.quit_times = editor::QUIT_TIMES;
@@ -87,7 +96,11 @@ pub(crate) fn prompt_with_callback(
 
         while let Some(input) = editor.term.read_input().context(TerminalError)? {
             match input {
-                Input { key, ctrl: true } => match key {
+                Input {
+                    key,
+                    ctrl: true,
+                    alt: false,
+                } => match key {
                     Char('H') => {
                         let _ = buf.pop();
                     }
@@ -105,7 +118,11 @@ pub(crate) fn prompt_with_callback(
                     }
                     _ => {}
                 },
-                Input { key, ctrl: false } => match key {
+                Input {
+                    key,
+                    ctrl: false,
+                    alt: false,
+                } => match key {
                     Delete | Backspace => {
                         let _ = buf.pop();
                     }
@@ -117,6 +134,7 @@ pub(crate) fn prompt_with_callback(
                     }
                     _ => {}
                 },
+                _ => {}
             }
         }
     }
