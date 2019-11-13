@@ -55,6 +55,21 @@ pub(crate) enum Key {
     PageDown,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) struct Input {
+    pub(crate) key: Key,
+    pub(crate) ctrl: bool,
+}
+
+impl Input {
+    fn new(key: Key) -> Self {
+        Input { key, ctrl: false }
+    }
+    fn ctrl(key: Key) -> Self {
+        Input { key, ctrl: true }
+    }
+}
+
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
@@ -162,10 +177,10 @@ impl RawTerminal {
         let mut cs = s.chars();
         let ch = cs.next();
         debug_assert!(ch.is_none() || cs.next().is_none());
-        Ok(ch)
+        Ok(dbg!(ch))
     }
 
-    pub(crate) fn read_key(&mut self) -> Result<Option<Key>> {
+    pub(crate) fn read_input(&mut self) -> Result<Option<Input>> {
         use Key::*;
 
         match self.read_char()? {
@@ -175,43 +190,39 @@ impl RawTerminal {
                 self.read_buf.push(esc);
                 let ch = match self.read_char()? {
                     Some(ch) => ch,
-                    None => return Ok(Some(Char('\x1b'))),
+                    None => return Ok(Some(Input::ctrl(Char('[')))),
                 };
-                match ch {
-                    '[' => {
+                if ch == '[' {
+                    self.read_buf.push(ch);
+                    while let Some(ch) = self.read_char()? {
                         self.read_buf.push(ch);
-                        while let Some(ch) = self.read_char()? {
-                            self.read_buf.push(ch);
-                            match ch {
-                                'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
-                                _ => continue,
-                            }
+                        match ch {
+                            'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
+                            _ => continue,
                         }
                     }
-                    'O' => {
-                        self.read_buf.push(ch);
-                        if let Some(ch) = self.read_char()? {
-                            self.read_buf.push(ch);
-                        }
-                    }
-                    _ => {}
                 }
                 let key = match &self.read_buf[..] {
-                    "\x1b[1~" | "\x1b[7~" | "\x1b[H" | "\x1bOH" => Home,
+                    "\x1b[1~" | "\x1b[7~" | "\x1b[H" => Home,
                     "\x1b[3~" => Delete,
-                    "\x1b[4~" | "\x1b[8~" | "\x1b[F" | "\x1bOF" => End,
+                    "\x1b[4~" | "\x1b[8~" | "\x1b[F" => End,
                     "\x1b[5~" => PageUp,
                     "\x1b[6~" => PageDown,
                     "\x1b[A" => ArrowUp,
                     "\x1b[B" => ArrowDown,
                     "\x1b[C" => ArrowRight,
                     "\x1b[D" => ArrowLeft,
-                    _ => Char('\x1b'),
+                    _ => return Ok(Some(Input::ctrl(Char('[')))),
                 };
-                Ok(Some(key))
+                Ok(Some(Input::new(key)))
             }
-            Some('\x7f') => Ok(Some(Backspace)),
-            Some(ch) => Ok(Some(Char(ch))),
+            Some('\x7f') => Ok(Some(Input::new(Backspace))),
+            Some(ch) if ch.is_ascii_control() => {
+                assert!((ch as u8) < 0x1f);
+                let key = Key::Char((ch as u8 + 0x40) as char);
+                Ok(Some(Input::ctrl(key)))
+            }
+            Some(ch) => Ok(Some(Input::new(Char(ch)))),
         }
     }
 

@@ -1,7 +1,7 @@
 use crate::{
     editor::{self, CursorMove, Editor},
     find, output,
-    terminal::{self, Key},
+    terminal::{self, Input, Key},
 };
 use snafu::{ResultExt, Snafu};
 
@@ -15,44 +15,42 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-fn ctrl_key(b: char) -> char {
-    debug_assert!(b.is_ascii_lowercase());
-    ((b as u8) & 0x1f) as char
-}
-
 pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
-    if let Some(ch) = editor.term.read_key().context(TerminalError)? {
-        match ch {
-            Char('\r') => editor.insert_newline(),
-            Char(ch) if ch == ctrl_key('q') => {
-                if editor.dirty && editor.quit_times > 0 {
-                    editor.set_status_msg(format!(
-                        "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
-                        editor.quit_times
-                    ));
-                    editor.quit_times -= 1;
-                    return Ok(false);
+    if let Some(input) = editor.term.read_input().context(TerminalError)? {
+        match dbg!(input) {
+            Input { key, ctrl: true } => match key {
+                Char('M') => editor.insert_newline(), // Ctrl-M : \r
+                Char('Q') => {
+                    if editor.dirty && editor.quit_times > 0 {
+                        editor.set_status_msg(format!(
+                            "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
+                            editor.quit_times
+                        ));
+                        editor.quit_times -= 1;
+                        return Ok(false);
+                    }
+                    return Ok(true);
                 }
-                return Ok(true);
-            }
-            Char(ch) if ch == ctrl_key('s') => editor.save()?,
-            ArrowUp => editor.move_cursor(CursorMove::Up),
-            ArrowDown => editor.move_cursor(CursorMove::Down),
-            ArrowLeft => editor.move_cursor(CursorMove::Left),
-            ArrowRight => editor.move_cursor(CursorMove::Right),
-            Home => editor.move_cursor(CursorMove::Home),
-            End => editor.move_cursor(CursorMove::End),
-            Char(ch) if ch == ctrl_key('f') => find::find(editor)?,
-            Char(ch) if ch == ctrl_key('h') => editor.delete_back_char(),
-            Delete => editor.delete_char(),
-            Backspace => editor.delete_back_char(),
-            PageUp => editor.move_cursor(CursorMove::PageUp),
-            PageDown => editor.move_cursor(CursorMove::PageDown),
-            Char(ch) if ch == ctrl_key('l') => {}
-            Char('\x1b') => {}
-            Char(ch) => editor.insert_char(ch),
+                Char('S') => editor.save()?,
+                Char('F') => find::find(editor)?,
+                Char('H') => editor.delete_back_char(),
+                _ => {}
+            },
+            Input { key, ctrl: false } => match key {
+                ArrowUp => editor.move_cursor(CursorMove::Up),
+                ArrowDown => editor.move_cursor(CursorMove::Down),
+                ArrowLeft => editor.move_cursor(CursorMove::Left),
+                ArrowRight => editor.move_cursor(CursorMove::Right),
+                Home => editor.move_cursor(CursorMove::Home),
+                End => editor.move_cursor(CursorMove::End),
+                PageUp => editor.move_cursor(CursorMove::PageUp),
+                PageDown => editor.move_cursor(CursorMove::PageDown),
+                Delete => editor.delete_char(),
+                Backspace => editor.delete_back_char(),
+                Char(ch) => editor.insert_char(ch),
+            },
         }
 
         editor.quit_times = editor::QUIT_TIMES;
@@ -87,33 +85,38 @@ pub(crate) fn prompt_with_callback(
         editor.set_status_msg(prompt);
         output::refresh_screen(editor).context(OutputError)?;
 
-        while let Some(key) = editor.term.read_key().context(TerminalError)? {
-            match key {
-                Char(ch) if ch == ctrl_key('h') => {
-                    let _ = buf.pop();
-                }
-                Delete | Backspace => {
-                    let _ = buf.pop();
-                }
-                Char('\x1b') => {
-                    editor.set_status_msg("");
-                    callback(editor, &mut buf, PromptCommand::Cancel);
-                    return Ok(None);
-                }
-                Char('\r') => {
-                    if !buf.is_empty() {
-                        editor.set_status_msg("");
-                        callback(editor, &mut buf, PromptCommand::Execute);
-                        return Ok(Some(buf));
+        while let Some(input) = editor.term.read_input().context(TerminalError)? {
+            match input {
+                Input { key, ctrl: true } => match key {
+                    Char('H') => {
+                        let _ = buf.pop();
                     }
-                }
-                ArrowLeft | ArrowUp => callback(editor, &mut buf, PromptCommand::FindPrev),
-                ArrowRight | ArrowDown => callback(editor, &mut buf, PromptCommand::FindNext),
-                Char(ch) if !ch.is_control() => {
-                    buf.push(ch);
-                    callback(editor, &mut buf, PromptCommand::Input);
-                }
-                _ => {}
+                    Char('M') => {
+                        if !buf.is_empty() {
+                            editor.set_status_msg("");
+                            callback(editor, &mut buf, PromptCommand::Execute);
+                            return Ok(Some(buf));
+                        }
+                    }
+                    Char('[') => {
+                        editor.set_status_msg("");
+                        callback(editor, &mut buf, PromptCommand::Cancel);
+                        return Ok(None);
+                    }
+                    _ => {}
+                },
+                Input { key, ctrl: false } => match key {
+                    Delete | Backspace => {
+                        let _ = buf.pop();
+                    }
+                    ArrowLeft | ArrowUp => callback(editor, &mut buf, PromptCommand::FindPrev),
+                    ArrowRight | ArrowDown => callback(editor, &mut buf, PromptCommand::FindNext),
+                    Char(ch) => {
+                        buf.push(ch);
+                        callback(editor, &mut buf, PromptCommand::Input);
+                    }
+                    _ => {}
+                },
             }
         }
     }
