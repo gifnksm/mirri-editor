@@ -19,7 +19,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
     if let Some(input) = editor.term.read_input().context(TerminalError)? {
-        match dbg!(input) {
+        match input {
             Input {
                 key,
                 ctrl: true,
@@ -47,7 +47,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Char('S') => editor.save()?,
                 Char('G') => find::find(editor)?,
                 Char('H') => editor.delete_back_char(),
-                _ => {}
+                _ => editor.set_status_msg(format!("{} is undefined", input)),
             },
             Input {
                 key,
@@ -55,7 +55,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 alt: true,
             } => match key {
                 Char('v') => editor.move_cursor(CursorMove::PageUp),
-                _ => {}
+                _ => editor.set_status_msg(format!("{} is undefined", input)),
             },
             Input {
                 key,
@@ -74,7 +74,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Backspace => editor.delete_back_char(),
                 Char(ch) => editor.insert_char(ch),
             },
-            _ => {}
+            _ => editor.set_status_msg(format!("{} is undefined", input)),
         }
 
         editor.quit_times = editor::QUIT_TIMES;

@@ -2,6 +2,7 @@ use crate::signal::SignalReceiver;
 use smallvec::SmallVec;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
+    fmt::{Display, Formatter, Result as FmtResult, Write as _},
     io::{self, Read, Stdin, Stdout, Write},
     mem,
     os::unix::io::AsRawFd,
@@ -55,11 +56,57 @@ pub(crate) enum Key {
     PageDown,
 }
 
+impl Display for Key {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        use Key::*;
+        match self {
+            Char(ch) => f.write_char(*ch),
+            Backspace => f.write_str("<backspace>"),
+            ArrowLeft => f.write_str("<left>"),
+            ArrowRight => f.write_str("<right>"),
+            ArrowUp => f.write_str("<up>"),
+            ArrowDown => f.write_str("<down>"),
+            Delete => f.write_str("<delete>"),
+            Home => f.write_str("<home>"),
+            End => f.write_str("<end>"),
+            PageUp => f.write_str("<page up>"),
+            PageDown => f.write_str("<page down>"),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) struct Input {
     pub(crate) key: Key,
     pub(crate) ctrl: bool,
     pub(crate) alt: bool,
+}
+
+impl Display for Input {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Input {
+                key,
+                ctrl: true,
+                alt: true,
+            } => write!(f, "C-M-{}", key),
+            Input {
+                key,
+                ctrl: true,
+                alt: false,
+            } => write!(f, "C-{}", key),
+            Input {
+                key,
+                ctrl: false,
+                alt: true,
+            } => write!(f, "M-{}", key),
+            Input {
+                key,
+                ctrl: false,
+                alt: false,
+            } => write!(f, "{}", key),
+        }
+    }
 }
 
 impl Input {
@@ -191,7 +238,7 @@ impl RawTerminal {
         let mut cs = s.chars();
         let ch = cs.next();
         debug_assert!(ch.is_none() || cs.next().is_none());
-        Ok(dbg!(ch))
+        Ok(ch)
     }
 
     fn set_unread_char(&mut self, ch: char) {
