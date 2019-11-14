@@ -29,8 +29,9 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 ctrl: true,
                 alt: false,
             } => match key {
-                Char('M') => editor.insert_newline(), // Ctrl-M : \r
-                Char('I') => editor.insert_char('\t'),
+                Char('M') => editor.insert_newline(),   // Ctrl-M : \r
+                Char('I') => editor.insert_char('\t'),  // Ctrl-I : \t
+                Char('?') => editor.delete_back_char(), // Ctrl-? : Backspace
                 Char('Q') => {
                     if editor.dirty && editor.quit_times > 0 {
                         editor.set_status_msg(format!(
@@ -76,7 +77,6 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 PageUp => editor.move_cursor(CursorMove::PageUp),
                 PageDown => editor.move_cursor(CursorMove::PageDown),
                 Delete => editor.delete_char(),
-                Backspace => editor.delete_back_char(),
                 Char(ch) => editor.insert_char(ch),
             },
             _ => editor.set_status_msg(format!("{} is undefined", input)),
@@ -125,7 +125,7 @@ pub(crate) fn prompt_with_callback(
                     ctrl: true,
                     alt: false,
                 } => match key {
-                    Char('H') => {
+                    Char('H') | Char('?') => {
                         let _ = buf.pop();
                     }
                     Char('M') => {
@@ -147,7 +147,7 @@ pub(crate) fn prompt_with_callback(
                     ctrl: false,
                     alt: false,
                 } => match key {
-                    Delete | Backspace => {
+                    Delete => {
                         let _ = buf.pop();
                     }
                     ArrowLeft | ArrowUp => callback(editor, &mut buf, PromptCommand::FindPrev),

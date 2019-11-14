@@ -27,7 +27,6 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Key {
     Char(char),
-    Backspace,
     ArrowLeft,
     ArrowRight,
     ArrowUp,
@@ -44,7 +43,6 @@ impl Display for Key {
         use Key::*;
         match self {
             Char(ch) => f.write_char(*ch),
-            Backspace => f.write_str("<backspace>"),
             ArrowLeft => f.write_str("<left>"),
             ArrowRight => f.write_str("<right>"),
             ArrowUp => f.write_str("<up>"),
@@ -214,12 +212,91 @@ impl Decoder {
                 };
                 Ok(Some(Input::new(key)))
             }
-            Some('\x7f') => Ok(Some(Input::new(Backspace))),
             Some(ch) if ch.is_ascii_control() => {
                 let key = Key::Char((ch as u8 ^ 0x40) as char);
                 Ok(Some(Input::ctrl(key)))
             }
             Some(ch) => Ok(Some(Input::new(Char(ch)))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{io::Cursor, iter};
+
+    #[test]
+    fn decode_char() {
+        let input = "abcdeあいうえお📝🦀";
+        let mut decoder = Decoder::new();
+        let mut output = vec![];
+        let mut cur = Cursor::new(input.as_bytes());
+        while let Ok(Some(ch)) = decoder.read_char(&mut cur) {
+            output.push(ch);
+        }
+        assert_eq!(
+            output,
+            &['a', 'b', 'c', 'd', 'e', 'あ', 'い', 'う', 'え', 'お', '📝', '🦀']
+        );
+    }
+
+    #[test]
+    fn decode_input_normal() {
+        use Key::*;
+
+        let input = "abcdeABCDEあいうえお📝🦀";
+        let mut decoder = Decoder::new();
+        let mut output = vec![];
+        let mut cur = Cursor::new(input.as_bytes());
+        while let Ok(Some(input)) = decoder.read_input(&mut cur) {
+            output.push(input);
+        }
+        assert_eq!(
+            output,
+            &[
+                Input::new(Char('a')),
+                Input::new(Char('b')),
+                Input::new(Char('c')),
+                Input::new(Char('d')),
+                Input::new(Char('e')),
+                Input::new(Char('A')),
+                Input::new(Char('B')),
+                Input::new(Char('C')),
+                Input::new(Char('D')),
+                Input::new(Char('E')),
+                Input::new(Char('あ')),
+                Input::new(Char('い')),
+                Input::new(Char('う')),
+                Input::new(Char('え')),
+                Input::new(Char('お')),
+                Input::new(Char('📝')),
+                Input::new(Char('🦀'))
+            ]
+        );
+    }
+
+    #[test]
+    fn decode_input_c0_ctrl() {
+        use Key::*;
+
+        let input = (0x00..=0x1f).chain(iter::once(0x7f));
+        let expected = [
+            '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+            'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_',
+        ]
+        .iter()
+        .map(|ch| Input::ctrl(Char(*ch)))
+        .collect::<Vec<_>>();
+
+        let mut decoder = Decoder::new();
+        let mut output = vec![];
+        for input in input {
+            let mut cur = Cursor::new(vec![input]);
+            while let Ok(Some(input)) = decoder.read_input(&mut cur) {
+                output.push(input);
+            }
+        }
+        assert_eq!(output, expected);
     }
 }
