@@ -1,12 +1,13 @@
-use crate::signal::SignalReceiver;
-use smallvec::SmallVec;
+use crate::{
+    decode::{self, Decoder},
+    signal::SignalReceiver,
+};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
-    fmt::{Display, Formatter, Result as FmtResult, Write as _},
     io::{self, Read, Stdin, Stdout, Write},
     mem,
     os::unix::io::AsRawFd,
-    str::{self, Utf8Error},
+    str,
 };
 use termios::Termios;
 
@@ -22,9 +23,9 @@ pub(crate) enum Error {
         source: io::Error,
         backtrace: Backtrace,
     },
-    #[snafu(display("Could not read from terminal: {}", source))]
-    TerminalInput {
-        source: io::Error,
+    #[snafu(display("{}", source))]
+    Decode {
+        source: decode::Error,
         backtrace: Backtrace,
     },
     #[snafu(display("Could not write to terminal: {}", source))]
@@ -32,98 +33,8 @@ pub(crate) enum Error {
         source: io::Error,
         backtrace: Backtrace,
     },
-    #[snafu(display("Could not handle non-UTF8 input sequence: {}", source))]
-    NonUtf8Input {
-        source: Utf8Error,
-        backtrace: Backtrace,
-    },
     #[snafu(display("Unecptected escape sequence: {:?}", seq))]
     UnexpectedEscapeSequence { backtrace: Backtrace, seq: String },
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub(crate) enum Key {
-    Char(char),
-    Backspace,
-    ArrowLeft,
-    ArrowRight,
-    ArrowUp,
-    ArrowDown,
-    Delete,
-    Home,
-    End,
-    PageUp,
-    PageDown,
-}
-
-impl Display for Key {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use Key::*;
-        match self {
-            Char(ch) => f.write_char(*ch),
-            Backspace => f.write_str("<backspace>"),
-            ArrowLeft => f.write_str("<left>"),
-            ArrowRight => f.write_str("<right>"),
-            ArrowUp => f.write_str("<up>"),
-            ArrowDown => f.write_str("<down>"),
-            Delete => f.write_str("<delete>"),
-            Home => f.write_str("<home>"),
-            End => f.write_str("<end>"),
-            PageUp => f.write_str("<page up>"),
-            PageDown => f.write_str("<page down>"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub(crate) struct Input {
-    pub(crate) key: Key,
-    pub(crate) ctrl: bool,
-    pub(crate) alt: bool,
-}
-
-impl Display for Input {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Input {
-                key,
-                ctrl: true,
-                alt: true,
-            } => write!(f, "C-M-{}", key),
-            Input {
-                key,
-                ctrl: true,
-                alt: false,
-            } => write!(f, "C-{}", key),
-            Input {
-                key,
-                ctrl: false,
-                alt: true,
-            } => write!(f, "M-{}", key),
-            Input {
-                key,
-                ctrl: false,
-                alt: false,
-            } => write!(f, "{}", key),
-        }
-    }
-}
-
-impl Input {
-    fn new(key: Key) -> Self {
-        Input {
-            key,
-            ctrl: false,
-            alt: false,
-        }
-    }
-    fn ctrl(key: Key) -> Self {
-        Input {
-            key,
-            ctrl: true,
-            alt: false,
-        }
-    }
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
@@ -136,8 +47,6 @@ pub(crate) struct RawTerminal {
     pub(crate) screen_rows: usize,
     sigwinch_receiver: SignalReceiver,
     orig_termios: Termios,
-    unread_char: Option<char>,
-    read_buf: String,
 }
 
 impl RawTerminal {
@@ -184,135 +93,32 @@ impl RawTerminal {
 
         let sigwinch_receiver = SignalReceiver::new_sigwinch().context(SignalReceiverInit)?;
 
-        let mut term = Self {
+        let term = Self {
             stdin,
             stdout,
             screen_cols: 0,
             screen_rows: 0,
             sigwinch_receiver,
             orig_termios,
-            unread_char: None,
-            read_buf: String::new(),
         };
-        term.update_screen_size()?;
         Ok(term)
     }
 
-    fn read_byte(&mut self) -> Result<Option<u8>> {
-        let mut buf = [0];
-        let byte = match self.stdin.read(&mut buf).context(TerminalInput)? {
-            0 => None,
-            1 => Some(buf[0]),
-            _ => panic!("never come"),
-        };
-        Ok(byte)
-    }
-
-    fn read_char(&mut self) -> Result<Option<char>> {
-        if let Some(ch) = self.unread_char.take() {
-            return Ok(Some(ch));
-        }
-        let mut bytes = SmallVec::<[u8; 4]>::new();
-        match self.read_byte()? {
-            Some(b) => bytes.push(b),
-            None => return Ok(None),
-        };
-
-        // https://tools.ietf.org/html/rfc3629
-        let width = match bytes[0] {
-            0b0000_0000..=0b0111_1111 => 1,
-            0b1000_0000..=0b1011_1111 | 0b1111_1000..=0b1111_1111 => 0,
-            0b1100_0000..=0b1101_1111 => 2,
-            0b1110_0000..=0b1110_1111 => 3,
-            0b1111_0000..=0b1111_0111 => 4,
-        };
-
-        while bytes.len() < width {
-            match self.read_byte()? {
-                Some(b) => bytes.push(b),
-                None => break,
-            }
-        }
-
-        let s = str::from_utf8(&bytes).context(NonUtf8Input)?;
-        let mut cs = s.chars();
-        let ch = cs.next();
-        debug_assert!(ch.is_none() || cs.next().is_none());
-        Ok(ch)
-    }
-
-    fn set_unread_char(&mut self, ch: char) {
-        assert!(self.unread_char.is_none());
-        self.unread_char = Some(ch);
-    }
-
-    pub(crate) fn read_input(&mut self) -> Result<Option<Input>> {
-        use Key::*;
-
-        match self.read_char()? {
-            None => Ok(None),
-            Some(esc @ '\x1b') => {
-                self.read_buf.clear();
-                self.read_buf.push(esc);
-                let ch = match self.read_char()? {
-                    Some(ch) => ch,
-                    None => return Ok(Some(Input::ctrl(Char('[')))),
-                };
-                if ch == '[' {
-                    self.read_buf.push(ch);
-                    while let Some(ch) = self.read_char()? {
-                        self.read_buf.push(ch);
-                        match ch {
-                            'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
-                            _ => continue,
-                        }
-                    }
-                } else {
-                    self.set_unread_char(ch);
-                    let mut input = self.read_input()?;
-                    if let Some(input) = &mut input {
-                        input.alt = true;
-                    }
-                    return Ok(input);
-                }
-                let key = match &self.read_buf[..] {
-                    "\x1b[1~" | "\x1b[7~" | "\x1b[H" => Home,
-                    "\x1b[3~" => Delete,
-                    "\x1b[4~" | "\x1b[8~" | "\x1b[F" => End,
-                    "\x1b[5~" => PageUp,
-                    "\x1b[6~" => PageDown,
-                    "\x1b[A" => ArrowUp,
-                    "\x1b[B" => ArrowDown,
-                    "\x1b[C" => ArrowRight,
-                    "\x1b[D" => ArrowLeft,
-                    _ => return Ok(Some(Input::ctrl(Char('[')))),
-                };
-                Ok(Some(Input::new(key)))
-            }
-            Some('\x7f') => Ok(Some(Input::new(Backspace))),
-            Some(ch) if ch.is_ascii_control() => {
-                let key = Key::Char((ch as u8 ^ 0x40) as char);
-                Ok(Some(Input::ctrl(key)))
-            }
-            Some(ch) => Ok(Some(Input::new(Char(ch)))),
-        }
-    }
-
-    pub(crate) fn maybe_update_screen_size(&mut self) -> Result<()> {
+    pub(crate) fn maybe_update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
         if self.sigwinch_receiver.received() {
-            self.update_screen_size()?;
+            self.update_screen_size(decoder)?;
         }
         Ok(())
     }
 
-    fn update_screen_size(&mut self) -> Result<()> {
-        let (screen_cols, screen_rows) = self.get_window_size()?;
+    pub(crate) fn update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
+        let (screen_cols, screen_rows) = self.get_window_size(decoder)?;
         self.screen_cols = screen_cols;
         self.screen_rows = screen_rows - 2; // status bar height + message bar height
         Ok(())
     }
 
-    fn get_window_size(&mut self) -> Result<(usize, usize)> {
+    fn get_window_size(&mut self, decoder: &mut Decoder) -> Result<(usize, usize)> {
         if let Some(sz) = term_size::dimensions() {
             return Ok(sz);
         }
@@ -327,15 +133,15 @@ impl RawTerminal {
         self.stdout.flush().context(TerminalOutput)?;
 
         // Read the cursor position
-        self.read_buf.clear();
-        while let Some(ch) = self.read_char()? {
-            self.read_buf.push(ch);
+        let mut buf = String::new();
+        while let Some(ch) = decoder.read_char(&mut self.stdin).context(Decode)? {
+            buf.push(ch);
             if ch == 'R' {
                 break;
             }
         }
 
-        let s = self.read_buf.trim_end_matches('R');
+        let s = buf.trim_end_matches('R');
         if s.starts_with("\x1b[") {
             let s = s.trim_start_matches("\x1b[");
             let mut it = s.split(';');
@@ -348,7 +154,7 @@ impl RawTerminal {
         }
 
         UnexpectedEscapeSequence {
-            seq: mem::replace(&mut self.read_buf, String::new()),
+            seq: mem::replace(&mut buf, String::new()),
         }
         .fail()
     }
@@ -359,6 +165,12 @@ impl Drop for RawTerminal {
         use termios::*;
         let fd = self.stdin.as_raw_fd();
         tcsetattr(fd, TCSAFLUSH, &self.orig_termios).expect("failed to restore terminal mode");
+    }
+}
+
+impl Read for RawTerminal {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.stdin.read(buf)
     }
 }
 

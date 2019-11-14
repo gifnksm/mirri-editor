@@ -1,4 +1,6 @@
-use crate::{file, input, output, row::Row, syntax::Syntax, terminal::RawTerminal};
+use crate::{
+    decode::Decoder, file, input, output, row::Row, syntax::Syntax, terminal::RawTerminal,
+};
 use std::{path::PathBuf, time::Instant};
 
 pub(crate) const QUIT_TIMES: usize = 3;
@@ -27,11 +29,12 @@ pub(crate) struct Editor {
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
     pub(crate) syntax: &'static Syntax<'static>,
+    pub(crate) decoder: Decoder,
     pub(crate) term: RawTerminal,
 }
 
 impl Editor {
-    pub(crate) fn new(term: RawTerminal) -> Self {
+    pub(crate) fn new(decoder: Decoder, term: RawTerminal) -> Self {
         Editor {
             cx: 0,
             cy: 0,
@@ -43,6 +46,7 @@ impl Editor {
             filename: None,
             status_msg: None,
             syntax: Syntax::select(None::<&str>),
+            decoder,
             term,
         }
     }

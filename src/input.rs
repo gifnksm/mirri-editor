@@ -1,14 +1,14 @@
 use crate::{
+    decode::{self, Input, Key},
     editor::{self, CursorMove, Editor},
     find, output,
-    terminal::{self, Input, Key},
 };
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
     #[snafu(display("{}", source))]
-    TerminalError { source: terminal::Error },
+    DecodeError { source: decode::Error },
     #[snafu(display("{}", source))]
     OutputError { source: output::Error },
 }
@@ -18,7 +18,11 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
     use Key::*;
 
-    if let Some(input) = editor.term.read_input().context(TerminalError)? {
+    if let Some(input) = editor
+        .decoder
+        .read_input(&mut editor.term)
+        .context(DecodeError)?
+    {
         match input {
             Input {
                 key,
@@ -110,7 +114,11 @@ pub(crate) fn prompt_with_callback(
         editor.set_status_msg(prompt);
         output::refresh_screen(editor).context(OutputError)?;
 
-        while let Some(input) = editor.term.read_input().context(TerminalError)? {
+        while let Some(input) = editor
+            .decoder
+            .read_input(&mut editor.term)
+            .context(DecodeError)?
+        {
             match input {
                 Input {
                     key,

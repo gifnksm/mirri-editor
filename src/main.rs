@@ -1,8 +1,9 @@
-use crate::{editor::Editor, terminal::RawTerminal};
+use crate::{decode::Decoder, editor::Editor, terminal::RawTerminal};
 use snafu::{ErrorCompat, ResultExt, Snafu};
 use std::{path::PathBuf, process};
 use structopt::StructOpt;
 
+mod decode;
 mod editor;
 mod file;
 mod find;
@@ -35,8 +36,12 @@ struct Opt {
 
 fn run() -> Result<()> {
     let opt = Opt::from_args();
-    let term = RawTerminal::new().context(Terminal)?;
-    let mut editor = Editor::new(term);
+
+    let mut decoder = Decoder::new();
+    let mut term = RawTerminal::new().context(Terminal)?;
+    term.update_screen_size(&mut decoder).context(Terminal)?;
+    let mut editor = Editor::new(decoder, term);
+
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 
     if let Some(file) = &opt.file {

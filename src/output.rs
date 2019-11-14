@@ -254,7 +254,10 @@ fn draw_message_bar(editor: &mut Editor) -> Result<()> {
 }
 
 pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
-    editor.term.maybe_update_screen_size().context(Terminal)?;
+    editor
+        .term
+        .maybe_update_screen_size(&mut editor.decoder)
+        .context(Terminal)?;
     write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
     write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
