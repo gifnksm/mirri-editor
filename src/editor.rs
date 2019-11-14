@@ -1,21 +1,5 @@
-use crate::{
-    file, input, output,
-    row::Row,
-    syntax::Syntax,
-    terminal::{self, RawTerminal},
-};
-use snafu::{ResultExt, Snafu};
+use crate::{file, input, output, row::Row, syntax::Syntax, terminal::RawTerminal};
 use std::{path::PathBuf, time::Instant};
-
-#[derive(Debug, Snafu)]
-pub(crate) enum Error {
-    #[snafu(display("{}", source))]
-    TerminalError { source: terminal::Error },
-    #[snafu(display("{}", source))]
-    InputError { source: input::Error },
-}
-
-pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub(crate) const QUIT_TIMES: usize = 3;
 
@@ -47,10 +31,8 @@ pub(crate) struct Editor {
 }
 
 impl Editor {
-    pub(crate) fn new() -> Result<Self> {
-        let term = RawTerminal::new().context(TerminalError)?;
-
-        Ok(Editor {
+    pub(crate) fn new(term: RawTerminal) -> Self {
+        Editor {
             cx: 0,
             cy: 0,
             row_off: 0,
@@ -62,7 +44,7 @@ impl Editor {
             status_msg: None,
             syntax: Syntax::select(None::<&str>),
             term,
-        })
+        }
     }
 
     fn set_filename(&mut self, filename: Option<PathBuf>) {

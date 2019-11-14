@@ -1,4 +1,4 @@
-use crate::editor::Editor;
+use crate::{editor::Editor, terminal::RawTerminal};
 use snafu::{ErrorCompat, ResultExt, Snafu};
 use std::{path::PathBuf, process};
 use structopt::StructOpt;
@@ -17,11 +17,11 @@ mod util;
 #[derive(Debug, Snafu)]
 enum Error {
     #[snafu(display("{}", source))]
-    EditorError { source: editor::Error },
+    Terminal { source: terminal::Error },
     #[snafu(display("{}", source))]
-    InputError { source: input::Error },
+    Input { source: input::Error },
     #[snafu(display("{}", source))]
-    OutputError { source: output::Error },
+    Output { source: output::Error },
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
@@ -35,7 +35,8 @@ struct Opt {
 
 fn run() -> Result<()> {
     let opt = Opt::from_args();
-    let mut editor = Editor::new().context(EditorError)?;
+    let term = RawTerminal::new().context(Terminal)?;
+    let mut editor = Editor::new(term);
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 
     if let Some(file) = &opt.file {
@@ -43,16 +44,16 @@ fn run() -> Result<()> {
     }
 
     loop {
-        output::refresh_screen(&mut editor).context(OutputError)?;
-        output::flush(&mut editor).context(OutputError)?;
+        output::refresh_screen(&mut editor).context(Output)?;
+        output::flush(&mut editor).context(Output)?;
 
-        if input::process_keypress(&mut editor).context(InputError)? {
+        if input::process_keypress(&mut editor).context(Input)? {
             break;
         }
     }
 
-    output::clear_screen(&mut editor).context(OutputError)?;
-    output::flush(&mut editor).context(OutputError)?;
+    output::clear_screen(&mut editor).context(Output)?;
+    output::flush(&mut editor).context(Output)?;
 
     Ok(())
 }
