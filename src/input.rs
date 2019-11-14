@@ -26,6 +26,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 alt: false,
             } => match key {
                 Char('M') => editor.insert_newline(), // Ctrl-M : \r
+                Char('I') => editor.insert_char('\t'),
                 Char('Q') => {
                     if editor.dirty && editor.quit_times > 0 {
                         editor.set_status_msg(format!(

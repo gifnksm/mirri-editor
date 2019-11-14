@@ -291,8 +291,7 @@ impl RawTerminal {
             }
             Some('\x7f') => Ok(Some(Input::new(Backspace))),
             Some(ch) if ch.is_ascii_control() => {
-                assert!((ch as u8) < 0x1f);
-                let key = Key::Char((ch as u8 + 0x40) as char);
+                let key = Key::Char((ch as u8 ^ 0x40) as char);
                 Ok(Some(Input::ctrl(key)))
             }
             Some(ch) => Ok(Some(Input::new(Char(ch)))),
