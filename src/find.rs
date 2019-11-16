@@ -7,10 +7,8 @@ use crate::{
 use std::mem;
 
 pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
-    let saved_cx = editor.buffer.cx;
-    let saved_cy = editor.buffer.cy;
-    let saved_col_off = editor.buffer.col_off;
-    let saved_row_off = editor.buffer.row_off;
+    let saved_c = editor.buffer.c;
+    let saved_origin = editor.buffer.render_rect.origin;
 
     let mut saved_hl: Option<(usize, Vec<Highlight>)> = None;
 
@@ -38,15 +36,14 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                     return;
                 }
                 Cancel => {
-                    buffer.cx = saved_cx;
-                    buffer.cy = saved_cy;
-                    buffer.col_off = saved_col_off;
-                    buffer.row_off = saved_row_off;
+                    buffer.c = saved_c;
+                    buffer.render_rect.origin = saved_origin;
                     return;
                 }
             }
 
-            let (mut y, mut sx, mut ex) = last_match.unwrap_or((buffer.cy, buffer.cx, buffer.cx));
+            let (mut y, mut sx, mut ex) =
+                last_match.unwrap_or((buffer.c.y, buffer.c.x, buffer.c.x));
             for _ in 0..buffer.rows.len() {
                 let [prev, row, next] = buffer.rows.get3_mut(y);
                 let row = row.unwrap();
@@ -62,8 +59,8 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
                     let cx = idx_off + dx;
                     let s_len = s.len();
                     last_match = Some((y, cx, cx + s.len()));
-                    buffer.cy = y;
-                    buffer.cx = cx;
+                    buffer.c.y = y;
+                    buffer.c.x = cx;
                     saved_hl = Some((y, row.highlight().into()));
                     for hl in &mut row.highlight_mut()[cx..cx + s_len] {
                         *hl = Highlight::Match

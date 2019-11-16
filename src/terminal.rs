@@ -1,5 +1,6 @@
 use crate::{
     decode::{self, Decoder},
+    geom::Size,
     signal::SignalReceiver,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -43,8 +44,7 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 pub(crate) struct RawTerminal {
     stdin: Stdin,
     stdout: Stdout,
-    pub(crate) screen_cols: usize,
-    pub(crate) screen_rows: usize,
+    pub(crate) screen_size: Size,
     sigwinch_receiver: SignalReceiver,
     orig_termios: Termios,
 }
@@ -96,8 +96,7 @@ impl RawTerminal {
         let mut term = Self {
             stdin,
             stdout,
-            screen_cols: 0,
-            screen_rows: 0,
+            screen_size: Size::default(),
             sigwinch_receiver,
             orig_termios,
         };
@@ -116,15 +115,13 @@ impl RawTerminal {
     }
 
     fn update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
-        let (screen_cols, screen_rows) = self.get_window_size(decoder)?;
-        self.screen_cols = screen_cols;
-        self.screen_rows = screen_rows;
+        self.screen_size = self.get_window_size(decoder)?;
         Ok(())
     }
 
-    fn get_window_size(&mut self, decoder: &mut Decoder) -> Result<(usize, usize)> {
-        if let Some(sz) = term_size::dimensions() {
-            return Ok(sz);
+    fn get_window_size(&mut self, decoder: &mut Decoder) -> Result<Size> {
+        if let Some((cols, rows)) = term_size::dimensions() {
+            return Ok(Size { cols, rows });
         }
 
         // Move the cursor to the bottom-right corner.
@@ -149,11 +146,11 @@ impl RawTerminal {
         if s.starts_with("\x1b[") {
             let s = s.trim_start_matches("\x1b[");
             let mut it = s.split(';');
-            let row = it.next().and_then(|s| s.parse().ok());
-            let col = it.next().and_then(|s| s.parse().ok());
+            let rows = it.next().and_then(|s| s.parse().ok());
+            let cols = it.next().and_then(|s| s.parse().ok());
             let next = it.next();
-            if let (Some(row), Some(col), None) = (row, col, next) {
-                return Ok((col, row));
+            if let (Some(rows), Some(cols), None) = (rows, cols, next) {
+                return Ok(Size { cols, rows });
             }
         }
 

@@ -7,6 +7,7 @@ mod decode;
 mod editor;
 mod file;
 mod find;
+mod geom;
 mod input;
 mod output;
 mod row;
@@ -41,9 +42,9 @@ fn run() -> Result<()> {
     let mut decoder = Decoder::new();
     let term = RawTerminal::new(&mut decoder).context(Terminal)?;
 
-    let render_rows = term.screen_rows - 2;
-    let render_cols = term.screen_cols;
-    let mut editor = Editor::new(decoder, term, render_rows, render_cols);
+    let mut render_size = term.screen_size;
+    render_size.rows -= 2;
+    let mut editor = Editor::new(decoder, term, render_size);
 
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 

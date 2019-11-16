@@ -98,19 +98,19 @@ fn render_char<'a>(
 
 fn draw_rows(editor: &mut Editor) -> Result<()> {
     let buffer = &mut editor.buffer;
-    for y in 0..buffer.render_rows {
-        let file_row = y + buffer.row_off;
+    for y in 0..buffer.render_rect.size.rows {
+        let file_row = y + buffer.render_rect.origin.y;
         if file_row >= buffer.rows.len() {
-            if buffer.rows.is_empty() && y == buffer.render_rows / 3 {
+            if buffer.rows.is_empty() && y == buffer.render_rect.size.rows / 3 {
                 let welcome = format!(
                     "{} -- version {}",
                     env!("CARGO_PKG_DESCRIPTION"),
                     env!("CARGO_PKG_VERSION")
                 );
-                let mut width = editor.term.screen_cols;
-                if welcome.len() < editor.term.screen_cols {
+                let mut width = editor.term.screen_size.cols;
+                if welcome.len() < editor.term.screen_size.cols {
                     write!(&mut editor.term, "~").context(TerminalOutput)?;
-                    width = editor.term.screen_cols - 1
+                    width = editor.term.screen_size.cols - 1
                 }
                 write!(&mut editor.term, "{:^w$.p$}", welcome, w = width, p = width)
                     .context(TerminalOutput)?;
@@ -129,7 +129,10 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                 let hl = row.highlight()[idx];
                 let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
 
-                let (scr_s, scr_e) = (buffer.col_off, buffer.col_off + buffer.render_cols);
+                let (scr_s, scr_e) = (
+                    buffer.render_rect.origin.x,
+                    buffer.render_rect.origin.x + buffer.render_rect.size.cols,
+                );
                 let (col_s, col_e) = (current_col, current_col + width);
                 current_col += width;
                 if col_e <= scr_s || col_s >= scr_e {
@@ -196,13 +199,13 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
     let r_status = format!(
         "{} | {}/{}",
         editor.buffer.syntax.filetype,
-        editor.buffer.cy + 1,
+        editor.buffer.c.y + 1,
         editor.buffer.rows.len()
     );
 
-    let l_width = cmp::min(l_status.len(), editor.term.screen_cols);
-    let r_width = cmp::min(r_status.len(), editor.term.screen_cols - l_width);
-    let sep_width = editor.term.screen_cols - l_width - r_width;
+    let l_width = cmp::min(l_status.len(), editor.term.screen_size.cols);
+    let r_width = cmp::min(r_status.len(), editor.term.screen_size.cols - l_width);
+    let sep_width = editor.term.screen_size.cols - l_width - r_width;
 
     write!(
         &mut editor.term,
@@ -223,7 +226,7 @@ fn draw_message_bar(editor: &mut Editor) -> Result<()> {
     write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
     if let Some((time, msg)) = &mut editor.status_msg {
         if time.elapsed().as_secs() < 5 {
-            let cols = editor.term.screen_cols;
+            let cols = editor.term.screen_size.cols;
             write!(&mut editor.term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
         } else {
             editor.status_msg = None;
@@ -238,19 +241,20 @@ pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
         .maybe_update_screen_size(&mut editor.decoder)
         .context(Terminal)?;
     if updated {
-        // status bar height + message bar height
-        editor.set_render_size(editor.term.screen_rows - 2, editor.term.screen_cols);
+        let mut render_size = editor.term.screen_size;
+        render_size.rows -= 2; // status bar height + message bar height
+        editor.set_render_size(render_size);
     }
     write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
     write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
-    let (ry, rx) = editor.scroll();
+    let r = editor.scroll();
 
     draw_rows(editor)?;
     draw_status_bar(editor)?;
     draw_message_bar(editor)?;
 
-    write!(&mut editor.term, "\x1b[{};{}H", ry + 1, rx + 1).context(TerminalOutput)?; // move cursor
+    write!(&mut editor.term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor
     write!(&mut editor.term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
 
     Ok(())

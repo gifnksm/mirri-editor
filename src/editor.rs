@@ -1,4 +1,10 @@
-use crate::{decode::Decoder, input, terminal::RawTerminal, text_buffer::TextBuffer};
+use crate::{
+    decode::Decoder,
+    geom::{Point, Size},
+    input,
+    terminal::RawTerminal,
+    text_buffer::TextBuffer,
+};
 use std::{path::PathBuf, time::Instant};
 
 pub(crate) const QUIT_TIMES: usize = 3;
@@ -18,8 +24,7 @@ pub(crate) enum CursorMove {
 #[derive(Debug)]
 pub(crate) struct Editor {
     pub(crate) buffer: TextBuffer,
-    render_rows: usize,
-    render_cols: usize,
+    render_size: Size,
 
     pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
@@ -29,16 +34,10 @@ pub(crate) struct Editor {
 }
 
 impl Editor {
-    pub(crate) fn new(
-        decoder: Decoder,
-        term: RawTerminal,
-        render_rows: usize,
-        render_cols: usize,
-    ) -> Self {
+    pub(crate) fn new(decoder: Decoder, term: RawTerminal, render_size: Size) -> Self {
         Editor {
-            buffer: TextBuffer::new(render_rows, render_cols),
-            render_cols,
-            render_rows,
+            buffer: TextBuffer::new(render_size),
+            render_size,
             quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
@@ -53,7 +52,7 @@ impl Editor {
 
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
         let filename = filename.into();
-        match TextBuffer::from_file(filename, self.render_rows, self.render_cols) {
+        match TextBuffer::from_file(filename, self.render_size) {
             Ok(buffer) => self.buffer = buffer,
             Err(e) => self.set_status_msg(format!("{}", e)),
         }
@@ -83,11 +82,11 @@ impl Editor {
         Ok(())
     }
 
-    pub(crate) fn set_render_size(&mut self, render_rows: usize, render_cols: usize) {
-        self.buffer.set_render_size(render_rows, render_cols)
+    pub(crate) fn set_render_size(&mut self, render_size: Size) {
+        self.buffer.set_render_size(render_size)
     }
 
-    pub(crate) fn scroll(&mut self) -> (usize, usize) {
+    pub(crate) fn scroll(&mut self) -> Point {
         self.buffer.scroll()
     }
 

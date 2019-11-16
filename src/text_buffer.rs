@@ -1,47 +1,45 @@
-use crate::{editor::CursorMove, file, output, row::Row, syntax::Syntax};
+use crate::{
+    editor::CursorMove,
+    file,
+    geom::{Point, Rect, Size},
+    output,
+    row::Row,
+    syntax::Syntax,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct TextBuffer {
     filename: Option<PathBuf>,
     pub(crate) syntax: &'static Syntax<'static>,
-    pub(crate) cx: usize,
-    pub(crate) cy: usize,
+    pub(crate) c: Point,
     pub(crate) rows: Vec<Row>,
     dirty: bool,
 
-    pub(crate) row_off: usize,
-    pub(crate) col_off: usize,
-    pub(crate) render_rows: usize,
-    pub(crate) render_cols: usize,
+    pub(crate) render_rect: Rect,
 }
 
 impl TextBuffer {
-    pub(crate) fn new(render_rows: usize, render_cols: usize) -> Self {
+    pub(crate) fn new(render_size: Size) -> Self {
         let filename = None;
         let syntax = Syntax::select(filename.as_ref());
         Self {
             filename,
             syntax,
-            cx: 0,
-            cy: 0,
+            c: Point::default(),
             rows: vec![],
             dirty: false,
-            row_off: 0,
-            col_off: 0,
-            render_rows,
-            render_cols,
+            render_rect: Rect {
+                origin: Point::default(),
+                size: render_size,
+            },
         }
     }
 
-    pub(crate) fn from_file(
-        filename: impl Into<PathBuf>,
-        render_rows: usize,
-        render_cols: usize,
-    ) -> file::Result<Self> {
+    pub(crate) fn from_file(filename: impl Into<PathBuf>, render_rect: Size) -> file::Result<Self> {
         let filename = filename.into();
         let lines = file::open(&filename)?;
-        let mut buf = Self::new(render_rows, render_cols);
+        let mut buf = Self::new(render_rect);
         buf.set_filename(Some(filename));
         for line in lines {
             buf.append_row(line);
@@ -53,31 +51,33 @@ impl TextBuffer {
         self.dirty
     }
 
-    pub(crate) fn set_render_size(&mut self, render_rows: usize, render_cols: usize) {
-        self.render_rows = render_rows;
-        self.render_cols = render_cols;
+    pub(crate) fn set_render_size(&mut self, render_size: Size) {
+        self.render_rect.size = render_size;
     }
 
-    pub(crate) fn scroll(&mut self) -> (usize, usize) {
-        let rx = if let Some(row) = self.rows.get(self.cy) {
-            output::get_render_width(&row.chars[..self.cx])
+    pub(crate) fn scroll(&mut self) -> Point {
+        let rx = if let Some(row) = self.rows.get(self.c.y) {
+            output::get_render_width(&row.chars[..self.c.x])
         } else {
             0
         };
 
-        if self.row_off > self.cy {
-            self.row_off = self.cy;
+        if self.render_rect.origin.y > self.c.y {
+            self.render_rect.origin.y = self.c.y;
         }
-        if self.row_off + (self.render_rows - 1) < self.cy {
-            self.row_off = self.cy - (self.render_rows - 1);
+        if self.render_rect.origin.y + (self.render_rect.size.rows - 1) < self.c.y {
+            self.render_rect.origin.y = self.c.y - (self.render_rect.size.rows - 1);
         }
-        if self.col_off > rx {
-            self.col_off = rx;
+        if self.render_rect.origin.x > rx {
+            self.render_rect.origin.x = rx;
         }
-        if self.col_off + (self.render_cols - 1) < rx {
-            self.col_off = rx - (self.render_cols - 1);
+        if self.render_rect.origin.x + (self.render_rect.size.cols - 1) < rx {
+            self.render_rect.origin.x = rx - (self.render_rect.size.cols - 1);
         }
-        (self.cy - self.row_off, rx - self.col_off)
+        Point {
+            x: rx - self.render_rect.origin.x,
+            y: self.c.y - self.render_rect.origin.y,
+        }
     }
 
     pub(crate) fn save(&mut self) -> file::Result<usize> {
@@ -102,7 +102,7 @@ impl TextBuffer {
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
         use CursorMove::*;
-        let row = self.rows.get(self.cy);
+        let row = self.rows.get(self.c.y);
         enum YScroll {
             Up(usize),
             Down(usize),
@@ -110,35 +110,40 @@ impl TextBuffer {
         let mut y_scroll = None;
         match mv {
             Left => {
-                if let Some(ch) = row.and_then(|row| row.chars[..self.cx].chars().next_back()) {
-                    self.cx -= ch.len_utf8();
-                } else if self.cy > 0 {
-                    self.cy -= 1;
-                    self.cx = self.rows[self.cy].chars.len();
+                if let Some(ch) = row.and_then(|row| row.chars[..self.c.x].chars().next_back()) {
+                    self.c.x -= ch.len_utf8();
+                } else if self.c.y > 0 {
+                    self.c.y -= 1;
+                    self.c.x = self.rows[self.c.y].chars.len();
                 }
             }
             Right => {
                 if let Some(row) = row {
-                    if let Some(ch) = row.chars[self.cx..].chars().next() {
-                        self.cx += ch.len_utf8();
+                    if let Some(ch) = row.chars[self.c.x..].chars().next() {
+                        self.c.x += ch.len_utf8();
                     } else {
-                        self.cy += 1;
-                        self.cx = 0;
+                        self.c.y += 1;
+                        self.c.x = 0;
                     }
                 }
             }
-            Home => self.cx = 0,
+            Home => self.c.x = 0,
             End => {
                 if let Some(row) = row {
-                    self.cx = row.chars.len();
+                    self.c.x = row.chars.len();
                 }
             }
             Up => y_scroll = Some(YScroll::Up(1)),
             Down => y_scroll = Some(YScroll::Down(1)),
-            PageUp => y_scroll = Some(YScroll::Up((self.cy - self.row_off) + self.render_rows)),
+            PageUp => {
+                y_scroll = Some(YScroll::Up(
+                    (self.c.y - self.render_rect.origin.y) + self.render_rect.size.rows,
+                ))
+            }
             PageDown => {
                 y_scroll = Some(YScroll::Down(
-                    (self.row_off + (self.render_rows - 1) - self.cy) + self.render_rows,
+                    (self.render_rect.origin.y + (self.render_rect.size.rows - 1) - self.c.y)
+                        + self.render_rect.size.rows,
                 ))
             }
         }
@@ -147,27 +152,27 @@ impl TextBuffer {
             // Adjust cursor x position to the nearest char boundary in rendered texts
             let rx = self
                 .rows
-                .get(self.cy)
-                .map(|row| output::get_render_width(&row.chars[..self.cx]))
+                .get(self.c.y)
+                .map(|row| output::get_render_width(&row.chars[..self.c.x]))
                 .unwrap_or(0);
             match scroll {
                 YScroll::Up(dy) => {
-                    if self.cy < dy {
-                        self.cy = 0;
+                    if self.c.y < dy {
+                        self.c.y = 0;
                     } else {
-                        self.cy -= dy;
+                        self.c.y -= dy;
                     }
                 }
                 YScroll::Down(dy) => {
-                    self.cy += dy;
-                    if self.cy >= self.rows.len() {
-                        self.cy = self.rows.len();
+                    self.c.y += dy;
+                    if self.c.y >= self.rows.len() {
+                        self.c.y = self.rows.len();
                     }
                 }
             }
-            self.cx = self
+            self.c.x = self
                 .rows
-                .get(self.cy)
+                .get(self.c.y)
                 .map(|row| output::get_cx_from_rx(&row.chars, rx))
                 .unwrap_or(0);
         }
@@ -188,18 +193,18 @@ impl TextBuffer {
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) {
-        if self.cy == self.rows.len() {
+        if self.c.y == self.rows.len() {
             self.append_row("".into());
         }
-        self.rows[self.cy].insert_char(self.cx, ch);
+        self.rows[self.c.y].insert_char(self.c.x, ch);
         self.move_cursor(CursorMove::Right);
         self.dirty = true;
     }
 
     pub(crate) fn insert_newline(&mut self) {
-        if let Some(row) = self.rows.get_mut(self.cy) {
-            let rest = row.split(self.cx);
-            self.insert_row(self.cy + 1, rest);
+        if let Some(row) = self.rows.get_mut(self.c.y) {
+            let rest = row.split(self.c.x);
+            self.insert_row(self.c.y + 1, rest);
         } else {
             self.append_row("".into());
         }
@@ -213,15 +218,15 @@ impl TextBuffer {
     }
 
     pub(crate) fn delete_char(&mut self) {
-        let (left, right) = self.rows.split_at_mut(self.cy + 1);
+        let (left, right) = self.rows.split_at_mut(self.c.y + 1);
         let cur = left.last_mut().unwrap();
         let next = right.first();
-        if self.cx < cur.chars.len() {
-            cur.delete_char(self.cx);
+        if self.c.x < cur.chars.len() {
+            cur.delete_char(self.c.x);
             self.dirty = true;
         } else if let Some(next) = next {
             cur.append_str(&next.chars);
-            self.delete_row(self.cy + 1);
+            self.delete_row(self.c.y + 1);
             self.dirty = true;
         }
     }
