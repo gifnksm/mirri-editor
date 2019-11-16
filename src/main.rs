@@ -40,11 +40,11 @@ fn run() -> Result<()> {
     let opt = Opt::from_args();
 
     let mut decoder = Decoder::new();
-    let term = RawTerminal::new(&mut decoder).context(Terminal)?;
+    let mut term = RawTerminal::new(&mut decoder).context(Terminal)?;
 
     let mut render_size = term.screen_size;
     render_size.rows -= 2;
-    let mut editor = Editor::new(decoder, term, render_size);
+    let mut editor = Editor::new(render_size);
 
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 
@@ -53,16 +53,16 @@ fn run() -> Result<()> {
     }
 
     loop {
-        output::refresh_screen(&mut editor).context(Output)?;
-        output::flush(&mut editor).context(Output)?;
+        output::refresh_screen(&mut term, &mut decoder, &mut editor).context(Output)?;
+        output::flush(&mut term).context(Output)?;
 
-        if input::process_keypress(&mut editor).context(Input)? {
+        if input::process_keypress(&mut term, &mut decoder, &mut editor).context(Input)? {
             break;
         }
     }
 
-    output::clear_screen(&mut editor).context(Output)?;
-    output::flush(&mut editor).context(Output)?;
+    output::clear_screen(&mut term).context(Output)?;
+    output::flush(&mut term).context(Output)?;
 
     Ok(())
 }

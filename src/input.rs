@@ -1,7 +1,8 @@
 use crate::{
-    decode::{self, Input, Key},
+    decode::{self, Decoder, Input, Key},
     editor::{self, CursorMove, Editor},
     find, output,
+    terminal::RawTerminal,
 };
 use snafu::{ResultExt, Snafu};
 
@@ -15,14 +16,14 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
+pub(crate) fn process_keypress(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
+    editor: &mut Editor,
+) -> Result<bool> {
     use Key::*;
 
-    if let Some(input) = editor
-        .decoder
-        .read_input(&mut editor.term)
-        .context(DecodeError)?
-    {
+    if let Some(input) = decoder.read_input(term).context(DecodeError)? {
         match input {
             Input {
                 key,
@@ -50,8 +51,8 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Char('A') => editor.move_cursor(CursorMove::Home),
                 Char('E') => editor.move_cursor(CursorMove::End),
                 Char('V') => editor.move_cursor(CursorMove::PageDown),
-                Char('S') => editor.save()?,
-                Char('G') => find::find(editor)?,
+                Char('S') => editor.save(term, decoder)?,
+                Char('G') => find::find(term, decoder, editor)?,
                 Char('H') => editor.delete_back_char(),
                 _ => editor.set_status_msg(format!("{} is undefined", input)),
             },
@@ -97,11 +98,18 @@ pub(crate) enum PromptCommand {
     Cancel,
 }
 
-pub(crate) fn prompt(editor: &mut Editor, prompt: &str) -> Result<Option<String>> {
-    prompt_with_callback(editor, prompt, |_, _, _| {})
+pub(crate) fn prompt(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
+    editor: &mut Editor,
+    prompt: &str,
+) -> Result<Option<String>> {
+    prompt_with_callback(term, decoder, editor, prompt, |_, _, _| {})
 }
 
 pub(crate) fn prompt_with_callback(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
     editor: &mut Editor,
     prompt: &str,
     mut callback: impl FnMut(&mut Editor, &mut String, PromptCommand),
@@ -112,13 +120,9 @@ pub(crate) fn prompt_with_callback(
     loop {
         let prompt = prompt.replace("{}", &buf);
         editor.set_status_msg(prompt);
-        output::refresh_screen(editor).context(OutputError)?;
+        output::refresh_screen(term, decoder, editor).context(OutputError)?;
 
-        while let Some(input) = editor
-            .decoder
-            .read_input(&mut editor.term)
-            .context(DecodeError)?
-        {
+        while let Some(input) = decoder.read_input(term).context(DecodeError)? {
             match input {
                 Input {
                     key,

@@ -1,4 +1,10 @@
-use crate::{editor::Editor, syntax::Highlight, terminal, util::SliceExt};
+use crate::{
+    decode::Decoder,
+    editor::Editor,
+    syntax::Highlight,
+    terminal::{self, RawTerminal},
+    util::SliceExt,
+};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
@@ -26,19 +32,19 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) fn clear_screen(editor: &mut Editor) -> Result<()> {
+pub(crate) fn clear_screen(term: &mut RawTerminal) -> Result<()> {
     // ED - Erase In Display
     //   <esc> [ <param> J
     // Params:
     //   0 : clear the screen from the cursor up to the end of the screen
     //   1 : clear the screen up to where the cursor is
     //   2 : clear the entire screen
-    write!(&mut editor.term, "\x1b[2J").context(TerminalOutput)?;
+    write!(term, "\x1b[2J").context(TerminalOutput)?;
 
     // CUP - Cursor Position
     //   <esc> [ <row> ; <col> H
     // if params are omitted, the cursor will be positioned at the first row and first column (col=1, row=1)
-    write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?;
+    write!(term, "\x1b[H").context(TerminalOutput)?;
 
     Ok(())
 }
@@ -96,7 +102,7 @@ fn render_char<'a>(
     (&chars[..len], ch.width().unwrap()) // TODO: select width_cjk() or width()
 }
 
-fn draw_rows(editor: &mut Editor) -> Result<()> {
+fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     let buffer = &mut editor.buffer;
     for y in 0..buffer.render_rect.size.rows {
         let file_row = y + buffer.render_rect.origin.y;
@@ -107,15 +113,14 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                     env!("CARGO_PKG_DESCRIPTION"),
                     env!("CARGO_PKG_VERSION")
                 );
-                let mut width = editor.term.screen_size.cols;
-                if welcome.len() < editor.term.screen_size.cols {
-                    write!(&mut editor.term, "~").context(TerminalOutput)?;
-                    width = editor.term.screen_size.cols - 1
+                let mut width = term.screen_size.cols;
+                if welcome.len() < term.screen_size.cols {
+                    write!(term, "~").context(TerminalOutput)?;
+                    width = term.screen_size.cols - 1
                 }
-                write!(&mut editor.term, "{:^w$.p$}", welcome, w = width, p = width)
-                    .context(TerminalOutput)?;
+                write!(term, "{:^w$.p$}", welcome, w = width, p = width).context(TerminalOutput)?;
             } else {
-                write!(&mut editor.term, "~").context(TerminalOutput)?;
+                write!(term, "~").context(TerminalOutput)?;
             }
         } else {
             let [prev, row, next] = buffer.rows.get3_mut(file_row);
@@ -141,30 +146,29 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
                 if hl == Highlight::Normal {
                     if current_color.is_some() {
                         current_color = None;
-                        write!(&mut editor.term, "\x1b[39;49m").context(TerminalOutput)?;
+                        write!(term, "\x1b[39;49m").context(TerminalOutput)?;
                     }
                 } else {
                     let color = hl.to_color();
                     if current_color != Some(color) {
                         current_color = Some(color);
-                        write!(&mut editor.term, "\x1b[{};{}m", color.0, color.1)
-                            .context(TerminalOutput)?;
+                        write!(term, "\x1b[{};{}m", color.0, color.1).context(TerminalOutput)?;
                     }
                 }
                 if col_s < scr_s {
                     let width = col_e - scr_s;
-                    write!(&mut editor.term, "{:w$}", "", w = width).context(TerminalOutput)?;
+                    write!(term, "{:w$}", "", w = width).context(TerminalOutput)?;
                     continue;
                 }
                 if col_e > scr_e {
                     let width = scr_e - col_s;
-                    write!(&mut editor.term, "{:w$}", "", w = width).context(TerminalOutput)?;
+                    write!(term, "{:w$}", "", w = width).context(TerminalOutput)?;
                     continue;
                 }
-                write!(&mut editor.term, "{}", render).context(TerminalOutput)?;
+                write!(term, "{}", render).context(TerminalOutput)?;
             }
             if current_color.is_some() {
-                write!(&mut editor.term, "\x1b[39;49m").context(TerminalOutput)?;
+                write!(term, "\x1b[39;49m").context(TerminalOutput)?;
             }
         }
 
@@ -174,14 +178,14 @@ fn draw_rows(editor: &mut Editor) -> Result<()> {
         //  0 : erase from active position to the end of the line, inclusive (default)
         //  1 : erase from the start of the screen to the active position, inclusive
         //  2 : erase all of the line, inclusive
-        write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
-        writeln!(&mut editor.term, "\r").context(TerminalOutput)?;
+        write!(term, "\x1b[K").context(TerminalOutput)?;
+        writeln!(term, "\r").context(TerminalOutput)?;
     }
 
     Ok(())
 }
 
-fn draw_status_bar(editor: &mut Editor) -> Result<()> {
+fn draw_status_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     let default_path = OsStr::new("[No Name]");
     let path = editor
         .filename
@@ -203,12 +207,12 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         editor.buffer.rows.len()
     );
 
-    let l_width = cmp::min(l_status.len(), editor.term.screen_size.cols);
-    let r_width = cmp::min(r_status.len(), editor.term.screen_size.cols - l_width);
-    let sep_width = editor.term.screen_size.cols - l_width - r_width;
+    let l_width = cmp::min(l_status.len(), term.screen_size.cols);
+    let r_width = cmp::min(r_status.len(), term.screen_size.cols - l_width);
+    let sep_width = term.screen_size.cols - l_width - r_width;
 
     write!(
-        &mut editor.term,
+        term,
         "\x1b[7m{:.wl$}{:ws$}{:.wr$}\x1b[m",
         l_status,
         "",
@@ -218,16 +222,16 @@ fn draw_status_bar(editor: &mut Editor) -> Result<()> {
         wr = r_width,
     )
     .context(TerminalOutput)?;
-    writeln!(&mut editor.term, "\r").context(TerminalOutput)?;
+    writeln!(term, "\r").context(TerminalOutput)?;
     Ok(())
 }
 
-fn draw_message_bar(editor: &mut Editor) -> Result<()> {
-    write!(&mut editor.term, "\x1b[K").context(TerminalOutput)?;
+fn draw_message_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
+    write!(term, "\x1b[K").context(TerminalOutput)?;
     if let Some((time, msg)) = &mut editor.status_msg {
         if time.elapsed().as_secs() < 5 {
-            let cols = editor.term.screen_size.cols;
-            write!(&mut editor.term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
+            let cols = term.screen_size.cols;
+            write!(term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
         } else {
             editor.status_msg = None;
         }
@@ -235,33 +239,34 @@ fn draw_message_bar(editor: &mut Editor) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn refresh_screen(editor: &mut Editor) -> Result<()> {
-    let updated = editor
-        .term
-        .maybe_update_screen_size(&mut editor.decoder)
-        .context(Terminal)?;
+pub(crate) fn refresh_screen(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
+    editor: &mut Editor,
+) -> Result<()> {
+    let updated = term.maybe_update_screen_size(decoder).context(Terminal)?;
     if updated {
-        let mut render_size = editor.term.screen_size;
+        let mut render_size = term.screen_size;
         render_size.rows -= 2; // status bar height + message bar height
         editor.set_render_size(render_size);
     }
-    write!(&mut editor.term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
-    write!(&mut editor.term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
+    write!(term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
+    write!(term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
     let r = editor.scroll();
 
-    draw_rows(editor)?;
-    draw_status_bar(editor)?;
-    draw_message_bar(editor)?;
+    draw_rows(term, editor)?;
+    draw_status_bar(term, editor)?;
+    draw_message_bar(term, editor)?;
 
-    write!(&mut editor.term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor
-    write!(&mut editor.term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
+    write!(term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor
+    write!(term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
 
     Ok(())
 }
 
-pub(crate) fn flush(editor: &mut Editor) -> Result<()> {
-    editor.term.flush().context(TerminalOutput)?;
+pub(crate) fn flush(term: &mut RawTerminal) -> Result<()> {
+    term.flush().context(TerminalOutput)?;
 
     Ok(())
 }

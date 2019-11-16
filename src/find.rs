@@ -1,12 +1,18 @@
 use crate::{
+    decode::Decoder,
     editor::Editor,
     input::{self, PromptCommand},
     syntax::Highlight,
+    terminal::RawTerminal,
     util::SliceExt,
 };
 use std::mem;
 
-pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
+pub(crate) fn find(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
+    editor: &mut Editor,
+) -> input::Result<()> {
     let saved_c = editor.buffer.c;
     let saved_origin = editor.buffer.render_rect.origin;
 
@@ -16,6 +22,8 @@ pub(crate) fn find(editor: &mut Editor) -> input::Result<()> {
     let mut is_forward = true;
 
     let _query = input::prompt_with_callback(
+        term,
+        decoder,
         editor,
         "Search: {} (Use ESC/Arrow/Enter)",
         |editor, query, cmd| {

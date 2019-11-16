@@ -29,20 +29,16 @@ pub(crate) struct Editor {
     pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
-    pub(crate) decoder: Decoder,
-    pub(crate) term: RawTerminal,
 }
 
 impl Editor {
-    pub(crate) fn new(decoder: Decoder, term: RawTerminal, render_size: Size) -> Self {
+    pub(crate) fn new(render_size: Size) -> Self {
         Editor {
             buffer: TextBuffer::new(render_size),
             render_size,
             quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
-            decoder,
-            term,
         }
     }
 
@@ -58,10 +54,14 @@ impl Editor {
         }
     }
 
-    pub(crate) fn save(&mut self) -> input::Result<()> {
+    pub(crate) fn save(
+        &mut self,
+        term: &mut RawTerminal,
+        decoder: &mut Decoder,
+    ) -> input::Result<()> {
         if self.buffer.filename().is_none() {
             if let Some(filename) =
-                input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into)
+                input::prompt(term, decoder, self, "Save as: {} (ESC to cancel)")?.map(Into::into)
             {
                 self.buffer.set_filename(Some(filename));
             } else {
