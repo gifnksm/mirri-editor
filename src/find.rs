@@ -52,7 +52,7 @@ pub(crate) fn find(
 
             let (mut y, mut sx, mut ex) =
                 last_match.unwrap_or((buffer.c.y, buffer.c.x, buffer.c.x));
-            for _ in 0..buffer.rows.len() {
+            for _ in 0..=buffer.rows.len() {
                 let [prev, row, next] = buffer.rows.get3_mut(y);
                 let row = row.unwrap();
                 row.update_syntax(buffer.syntax, prev, next);
