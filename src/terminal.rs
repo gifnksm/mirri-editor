@@ -50,7 +50,7 @@ pub(crate) struct RawTerminal {
 }
 
 impl RawTerminal {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new(decoder: &mut Decoder) -> Result<Self> {
         use termios::*;
 
         let stdin = io::stdin();
@@ -93,7 +93,7 @@ impl RawTerminal {
 
         let sigwinch_receiver = SignalReceiver::new_sigwinch().context(SignalReceiverInit)?;
 
-        let term = Self {
+        let mut term = Self {
             stdin,
             stdout,
             screen_cols: 0,
@@ -101,20 +101,24 @@ impl RawTerminal {
             sigwinch_receiver,
             orig_termios,
         };
+
+        term.update_screen_size(decoder)?;
+
         Ok(term)
     }
 
-    pub(crate) fn maybe_update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
-        if self.sigwinch_receiver.received() {
+    pub(crate) fn maybe_update_screen_size(&mut self, decoder: &mut Decoder) -> Result<bool> {
+        let need_update = self.sigwinch_receiver.received();
+        if need_update {
             self.update_screen_size(decoder)?;
         }
-        Ok(())
+        Ok(need_update)
     }
 
-    pub(crate) fn update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
+    fn update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
         let (screen_cols, screen_rows) = self.get_window_size(decoder)?;
         self.screen_cols = screen_cols;
-        self.screen_rows = screen_rows - 2; // status bar height + message bar height
+        self.screen_rows = screen_rows;
         Ok(())
     }
 

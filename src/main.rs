@@ -13,6 +13,7 @@ mod row;
 mod signal;
 mod syntax;
 mod terminal;
+mod text_buffer;
 mod util;
 
 #[derive(Debug, Snafu)]
@@ -38,9 +39,11 @@ fn run() -> Result<()> {
     let opt = Opt::from_args();
 
     let mut decoder = Decoder::new();
-    let mut term = RawTerminal::new().context(Terminal)?;
-    term.update_screen_size(&mut decoder).context(Terminal)?;
-    let mut editor = Editor::new(decoder, term);
+    let term = RawTerminal::new(&mut decoder).context(Terminal)?;
+
+    let render_rows = term.screen_rows - 2;
+    let render_cols = term.screen_cols;
+    let mut editor = Editor::new(decoder, term, render_rows, render_cols);
 
     editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 

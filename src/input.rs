@@ -33,7 +33,7 @@ pub(crate) fn process_keypress(editor: &mut Editor) -> Result<bool> {
                 Char('I') => editor.insert_char('\t'),  // Ctrl-I : \t
                 Char('?') => editor.delete_back_char(), // Ctrl-? : Backspace
                 Char('Q') => {
-                    if editor.dirty && editor.quit_times > 0 {
+                    if editor.is_dirty() && editor.quit_times > 0 {
                         editor.set_status_msg(format!(
                             "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
                             editor.quit_times

@@ -1,6 +1,6 @@
 use crate::syntax::{Highlight, Syntax, SyntaxState};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Row {
     pub(crate) chars: String,
     syntax_state: SyntaxState,

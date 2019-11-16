@@ -1,6 +1,4 @@
-use crate::{
-    decode::Decoder, file, input, output, row::Row, syntax::Syntax, terminal::RawTerminal,
-};
+use crate::{decode::Decoder, input, terminal::RawTerminal, text_buffer::TextBuffer};
 use std::{path::PathBuf, time::Instant};
 
 pub(crate) const QUIT_TIMES: usize = 3;
@@ -19,80 +17,63 @@ pub(crate) enum CursorMove {
 
 #[derive(Debug)]
 pub(crate) struct Editor {
-    pub(crate) cx: usize,
-    pub(crate) cy: usize,
-    pub(crate) row_off: usize,
-    pub(crate) col_off: usize,
-    pub(crate) rows: Vec<Row>,
-    pub(crate) dirty: bool,
+    pub(crate) buffer: TextBuffer,
+    render_rows: usize,
+    render_cols: usize,
+
     pub(crate) quit_times: usize,
     pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
-    pub(crate) syntax: &'static Syntax<'static>,
     pub(crate) decoder: Decoder,
     pub(crate) term: RawTerminal,
 }
 
 impl Editor {
-    pub(crate) fn new(decoder: Decoder, term: RawTerminal) -> Self {
+    pub(crate) fn new(
+        decoder: Decoder,
+        term: RawTerminal,
+        render_rows: usize,
+        render_cols: usize,
+    ) -> Self {
         Editor {
-            cx: 0,
-            cy: 0,
-            row_off: 0,
-            col_off: 0,
-            rows: vec![],
-            dirty: false,
+            buffer: TextBuffer::new(render_rows, render_cols),
+            render_cols,
+            render_rows,
             quit_times: QUIT_TIMES,
             filename: None,
             status_msg: None,
-            syntax: Syntax::select(None::<&str>),
             decoder,
             term,
         }
     }
 
-    fn set_filename(&mut self, filename: Option<PathBuf>) {
-        self.filename = filename;
-        self.syntax = Syntax::select(self.filename.as_ref());
-        for row in &mut self.rows {
-            row.invalidate_syntax();
-        }
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.buffer.is_dirty()
     }
 
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
         let filename = filename.into();
-        match file::open(&filename) {
-            Ok(lines) => {
-                for line in lines {
-                    self.append_row(line);
-                }
-                self.set_filename(Some(filename));
-                self.dirty = false;
-            }
-            Err(e) => {
-                self.set_status_msg(format!("{}", e));
-            }
+        match TextBuffer::from_file(filename, self.render_rows, self.render_cols) {
+            Ok(buffer) => self.buffer = buffer,
+            Err(e) => self.set_status_msg(format!("{}", e)),
         }
     }
 
     pub(crate) fn save(&mut self) -> input::Result<()> {
-        let filename = if let Some(filename) = &self.filename {
-            filename.clone()
-        } else if let Some(filename) =
-            input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into)
-        {
-            filename
-        } else {
-            self.set_status_msg("Save aborted");
-            return Ok(());
-        };
+        if self.buffer.filename().is_none() {
+            if let Some(filename) =
+                input::prompt(self, "Save as: {} (ESC to cancel)")?.map(Into::into)
+            {
+                self.buffer.set_filename(Some(filename));
+            } else {
+                self.set_status_msg("Save aborted");
+                return Ok(());
+            }
+        }
 
-        let lines = self.rows.iter().map(|row| &row.chars);
-        match file::save(&filename, lines) {
+        match self.buffer.save() {
             Ok(bytes) => {
                 self.set_status_msg(format!("{} bytes written to disk", bytes));
-                self.set_filename(Some(filename));
-                self.dirty = false;
             }
             Err(e) => {
                 self.set_status_msg(format!("Can't save! {}", e));
@@ -102,95 +83,12 @@ impl Editor {
         Ok(())
     }
 
-    pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
-        use CursorMove::*;
-        let row = self.rows.get(self.cy);
-        enum YScroll {
-            Up(usize),
-            Down(usize),
-        }
-        let mut y_scroll = None;
-        match mv {
-            Left => {
-                if let Some(ch) = row.and_then(|row| row.chars[..self.cx].chars().next_back()) {
-                    self.cx -= ch.len_utf8();
-                } else if self.cy > 0 {
-                    self.cy -= 1;
-                    self.cx = self.rows[self.cy].chars.len();
-                }
-            }
-            Right => {
-                if let Some(row) = row {
-                    if let Some(ch) = row.chars[self.cx..].chars().next() {
-                        self.cx += ch.len_utf8();
-                    } else {
-                        self.cy += 1;
-                        self.cx = 0;
-                    }
-                }
-            }
-            Home => self.cx = 0,
-            End => {
-                if let Some(row) = row {
-                    self.cx = row.chars.len();
-                }
-            }
-            Up => y_scroll = Some(YScroll::Up(1)),
-            Down => y_scroll = Some(YScroll::Down(1)),
-            PageUp => {
-                y_scroll = Some(YScroll::Up(
-                    (self.cy - self.row_off) + self.term.screen_rows,
-                ))
-            }
-            PageDown => {
-                y_scroll = Some(YScroll::Down(
-                    (self.row_off + (self.term.screen_rows - 1) - self.cy) + self.term.screen_rows,
-                ))
-            }
-        }
-
-        if let Some(scroll) = y_scroll {
-            // Adjust cursor x position to the nearest char boundary in rendered texts
-            let rx = self
-                .rows
-                .get(self.cy)
-                .map(|row| output::get_render_width(&row.chars[..self.cx]))
-                .unwrap_or(0);
-            match scroll {
-                YScroll::Up(dy) => {
-                    if self.cy < dy {
-                        self.cy = 0;
-                    } else {
-                        self.cy -= dy;
-                    }
-                }
-                YScroll::Down(dy) => {
-                    self.cy += dy;
-                    if self.cy >= self.rows.len() {
-                        self.cy = self.rows.len();
-                    }
-                }
-            }
-            self.cx = self
-                .rows
-                .get(self.cy)
-                .map(|row| output::get_cx_from_rx(&row.chars, rx))
-                .unwrap_or(0);
-        }
+    pub(crate) fn set_render_size(&mut self, render_rows: usize, render_cols: usize) {
+        self.buffer.set_render_size(render_rows, render_cols)
     }
 
-    pub(crate) fn insert_row(&mut self, at: usize, s: String) {
-        self.rows.insert(at, Row::new(s));
-        self.dirty = true;
-    }
-
-    pub(crate) fn append_row(&mut self, s: String) {
-        self.insert_row(self.rows.len(), s);
-    }
-
-    pub(crate) fn delete_row(&mut self, at: usize) {
-        self.rows.remove(at);
-        self.dirty = true;
+    pub(crate) fn scroll(&mut self) -> (usize, usize) {
+        self.buffer.scroll()
     }
 
     pub(crate) fn set_status_msg(&mut self, s: impl Into<String>) {
@@ -198,42 +96,23 @@ impl Editor {
         self.status_msg = Some((now, s.into()));
     }
 
+    pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
+        self.buffer.move_cursor(mv)
+    }
+
     pub(crate) fn insert_char(&mut self, ch: char) {
-        if self.cy == self.rows.len() {
-            self.append_row("".into());
-        }
-        self.rows[self.cy].insert_char(self.cx, ch);
-        self.move_cursor(CursorMove::Right);
-        self.dirty = true;
+        self.buffer.insert_char(ch)
     }
 
     pub(crate) fn insert_newline(&mut self) {
-        if let Some(row) = self.rows.get_mut(self.cy) {
-            let rest = row.split(self.cx);
-            self.insert_row(self.cy + 1, rest);
-        } else {
-            self.append_row("".into());
-        }
-        self.move_cursor(CursorMove::Right);
-        self.dirty = true;
+        self.buffer.insert_newline()
     }
 
     pub(crate) fn delete_back_char(&mut self) {
-        self.move_cursor(CursorMove::Left);
-        self.delete_char();
+        self.buffer.delete_back_char()
     }
 
     pub(crate) fn delete_char(&mut self) {
-        let (left, right) = self.rows.split_at_mut(self.cy + 1);
-        let cur = left.last_mut().unwrap();
-        let next = right.first();
-        if self.cx < cur.chars.len() {
-            cur.delete_char(self.cx);
-            self.dirty = true;
-        } else if let Some(next) = next {
-            cur.append_str(&next.chars);
-            self.delete_row(self.cy + 1);
-            self.dirty = true;
-        }
+        self.buffer.delete_char()
     }
 }
