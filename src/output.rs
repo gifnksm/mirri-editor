@@ -135,23 +135,28 @@ fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
             }
         } else {
             let row = &buffer.rows[file_row];
+            let (scr_s, scr_e) = (
+                buffer.render_rect.origin.x,
+                buffer.render_rect.origin.x + buffer.render_rect.size.cols,
+            );
 
             let mut buf = String::new();
             let mut current_col = 0;
             let mut current_color = None;
             for (idx, ch) in row.chars.char_indices() {
-                let hl = row.syntax().highlight_at(idx);
-                let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
+                let col_s = current_col;
+                if col_s >= scr_e {
+                    break;
+                }
 
-                let (scr_s, scr_e) = (
-                    buffer.render_rect.origin.x,
-                    buffer.render_rect.origin.x + buffer.render_rect.size.cols,
-                );
-                let (col_s, col_e) = (current_col, current_col + width);
+                let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
+                let col_e = current_col + width;
                 current_col += width;
-                if col_e <= scr_s || col_s >= scr_e {
+                if col_e <= scr_s {
                     continue;
                 }
+
+                let hl = row.syntax().highlight_at(idx);
                 if hl == Highlight::Normal {
                     if current_color.is_some() {
                         current_color = None;
