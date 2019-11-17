@@ -45,6 +45,7 @@ impl TextBuffer {
         for line in lines {
             buf.append_row(line);
         }
+        buf.dirty = false;
         Ok(buf)
     }
 
