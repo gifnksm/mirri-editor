@@ -327,9 +327,23 @@ impl SyntaxState {
         &self.highlight
     }
 
-    pub(crate) fn highlight_mut(&mut self) -> &mut Vec<Highlight> {
-        assert!(self.updated);
-        &mut self.highlight
+    pub(crate) fn save(&self, cx: usize, len: usize) -> SavedHighlight {
+        SavedHighlight {
+            cx,
+            hl: self.highlight[cx..cx + len].into(),
+        }
+    }
+
+    pub(crate) fn restore(&mut self, saved: &SavedHighlight) {
+        for (idx, hl) in saved.hl.iter().enumerate() {
+            self.highlight[saved.cx + idx] = *hl;
+        }
+    }
+
+    pub(crate) fn overwrite(&mut self, cx: usize, len: usize, new_hl: Highlight) {
+        for hl in &mut self.highlight[cx..cx + len] {
+            *hl = new_hl;
+        }
     }
 
     pub(crate) fn invalidate(&mut self) {
@@ -368,6 +382,12 @@ impl SyntaxState {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct SavedHighlight {
+    cx: usize,
+    hl: Vec<Highlight>,
 }
 
 fn is_separator(ch: char) -> bool {

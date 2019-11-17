@@ -15,12 +15,12 @@ impl Row {
         }
     }
 
-    pub(crate) fn highlight(&self) -> &[Highlight] {
-        self.syntax_state.highlight()
+    pub(crate) fn syntax_mut(&mut self) -> &mut SyntaxState {
+        &mut self.syntax_state
     }
 
-    pub(crate) fn highlight_mut(&mut self) -> &mut Vec<Highlight> {
-        self.syntax_state.highlight_mut()
+    pub(crate) fn highlight(&self) -> &[Highlight] {
+        self.syntax_state.highlight()
     }
 
     pub(crate) fn invalidate_syntax(&mut self) {

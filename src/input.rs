@@ -92,8 +92,8 @@ pub(crate) fn process_keypress(
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum PromptCommand {
     Input,
-    FindPrev,
-    FindNext,
+    SearchBackward,
+    SearchForward,
     Execute,
     Cancel,
 }
@@ -123,7 +123,7 @@ pub(crate) fn prompt_with_callback(
         output::refresh_screen(term, decoder, editor).context(OutputError)?;
 
         while let Some(input) = decoder.read_input(term).context(DecodeError)? {
-            match input {
+            let cmd = match input {
                 Input {
                     key,
                     ctrl: true,
@@ -131,20 +131,21 @@ pub(crate) fn prompt_with_callback(
                 } => match key {
                     Char('H') | Char('?') => {
                         let _ = buf.pop();
+                        Some(PromptCommand::Input)
                     }
                     Char('M') => {
                         if !buf.is_empty() {
                             editor.set_status_msg("");
-                            callback(editor, &mut buf, PromptCommand::Execute);
-                            return Ok(Some(buf));
+                            Some(PromptCommand::Execute)
+                        } else {
+                            None
                         }
                     }
                     Char('[') => {
                         editor.set_status_msg("");
-                        callback(editor, &mut buf, PromptCommand::Cancel);
-                        return Ok(None);
+                        Some(PromptCommand::Cancel)
                     }
-                    _ => {}
+                    _ => None,
                 },
                 Input {
                     key,
@@ -153,16 +154,26 @@ pub(crate) fn prompt_with_callback(
                 } => match key {
                     Delete => {
                         let _ = buf.pop();
+                        Some(PromptCommand::Input)
                     }
-                    ArrowLeft | ArrowUp => callback(editor, &mut buf, PromptCommand::FindPrev),
-                    ArrowRight | ArrowDown => callback(editor, &mut buf, PromptCommand::FindNext),
+                    ArrowLeft | ArrowUp => Some(PromptCommand::SearchBackward),
+                    ArrowRight | ArrowDown => Some(PromptCommand::SearchForward),
                     Char(ch) => {
                         buf.push(ch);
-                        callback(editor, &mut buf, PromptCommand::Input);
+                        Some(PromptCommand::Input)
                     }
-                    _ => {}
+                    _ => None,
                 },
-                _ => {}
+                _ => None,
+            };
+
+            if let Some(cmd) = cmd {
+                callback(editor, &mut buf, cmd);
+                match cmd {
+                    PromptCommand::Execute => return Ok(Some(buf)),
+                    PromptCommand::Cancel => return Ok(None),
+                    _ => {}
+                }
             }
         }
     }

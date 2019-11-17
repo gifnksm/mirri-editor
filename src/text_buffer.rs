@@ -4,7 +4,8 @@ use crate::{
     geom::{Point, Rect, Size},
     output,
     row::Row,
-    syntax::Syntax,
+    syntax::{Highlight, SavedHighlight, Syntax},
+    util::SliceExt,
 };
 use std::path::{Path, PathBuf};
 
@@ -228,6 +229,105 @@ impl TextBuffer {
             cur.append_str(&next.chars);
             self.delete_row(self.c.y + 1);
             self.dirty = true;
+        }
+    }
+
+    pub(crate) fn find_start(&mut self) -> Find {
+        Find {
+            saved_c: self.c,
+            saved_origin: self.render_rect.origin,
+            saved_highlight: None,
+            is_forward: true,
+            last_match: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Find {
+    saved_c: Point,
+    saved_origin: Point,
+    saved_highlight: Option<(usize, SavedHighlight)>,
+    is_forward: bool,
+    last_match: Option<(usize, usize, usize)>,
+}
+
+impl Find {
+    pub(crate) fn execute(&mut self, buffer: &mut TextBuffer, _query: &str) {
+        self.restore_highlight(buffer);
+    }
+
+    pub(crate) fn cancel(&mut self, buffer: &mut TextBuffer, _query: &str) {
+        self.restore_highlight(buffer);
+
+        buffer.c = self.saved_c;
+        buffer.render_rect.origin = self.saved_origin;
+    }
+
+    pub(crate) fn input(&mut self, buffer: &mut TextBuffer, query: &str) {
+        self.restore_highlight(buffer);
+        self.last_match = None;
+        self.search(buffer, query);
+    }
+
+    pub(crate) fn search_forward(&mut self, buffer: &mut TextBuffer, query: &str) {
+        self.restore_highlight(buffer);
+        self.is_forward = true;
+        self.search(buffer, query);
+    }
+
+    pub(crate) fn search_backward(&mut self, buffer: &mut TextBuffer, query: &str) {
+        self.restore_highlight(buffer);
+        self.is_forward = false;
+        self.search(buffer, query);
+    }
+
+    fn restore_highlight(&mut self, buffer: &mut TextBuffer) {
+        if let Some((idx, hl)) = self.saved_highlight.take() {
+            buffer.rows[idx].syntax_mut().restore(&hl);
+        }
+    }
+
+    fn search(&mut self, buffer: &mut TextBuffer, query: &str) {
+        let (mut cy, mut cx_s, mut cx_e) = self
+            .last_match
+            .unwrap_or((buffer.c.y, buffer.c.x, buffer.c.x));
+
+        for _ in 0..=buffer.rows.len() {
+            let [prev, row, next] = buffer.rows.get3_mut(cy);
+            let row = row.unwrap();
+            row.update_syntax(buffer.syntax, prev, next);
+
+            let (idx_off, res) = if self.is_forward {
+                (cx_e, row.chars[cx_e..].match_indices(query).next())
+            } else {
+                (0, row.chars[..cx_s].rmatch_indices(query).next())
+            };
+
+            if let Some((dx, s)) = res {
+                let cx = idx_off + dx;
+                let s_len = s.len();
+                self.last_match = Some((cy, cx, cx + s.len()));
+                buffer.c.y = cy;
+                buffer.c.x = cx;
+
+                let syntax = row.syntax_mut();
+                self.saved_highlight = Some((cy, syntax.save(cx, s_len)));
+                syntax.overwrite(cx, s_len, Highlight::Match);
+                break;
+            }
+
+            if self.is_forward {
+                cy = (cy + 1) % buffer.rows.len();
+            } else if cy == 0 {
+                cy = buffer.rows.len() - 1;
+            } else {
+                cy -= 1;
+            }
+
+            let row = &mut buffer.rows[cy];
+            cx_s = row.chars.len();
+            cx_e = 0;
         }
     }
 }

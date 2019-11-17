@@ -3,7 +3,7 @@ use crate::{
     geom::{Point, Size},
     input,
     terminal::RawTerminal,
-    text_buffer::TextBuffer,
+    text_buffer::{self, TextBuffer},
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -113,5 +113,34 @@ impl Editor {
 
     pub(crate) fn delete_char(&mut self) {
         self.buffer.delete_char()
+    }
+
+    pub(crate) fn find_start(&mut self) -> Find {
+        Find {
+            inner: self.buffer.find_start(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Find {
+    inner: text_buffer::Find,
+}
+
+impl Find {
+    pub(crate) fn execute(&mut self, editor: &mut Editor, query: &str) {
+        self.inner.execute(&mut editor.buffer, query)
+    }
+    pub(crate) fn cancel(&mut self, editor: &mut Editor, query: &str) {
+        self.inner.cancel(&mut editor.buffer, query)
+    }
+    pub(crate) fn input(&mut self, editor: &mut Editor, query: &str) {
+        self.inner.input(&mut editor.buffer, query)
+    }
+    pub(crate) fn search_forward(&mut self, editor: &mut Editor, query: &str) {
+        self.inner.search_forward(&mut editor.buffer, query)
+    }
+    pub(crate) fn search_backward(&mut self, editor: &mut Editor, query: &str) {
+        self.inner.search_backward(&mut editor.buffer, query)
     }
 }
