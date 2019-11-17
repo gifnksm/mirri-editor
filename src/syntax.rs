@@ -353,6 +353,8 @@ impl SyntaxState {
         prev: Option<&mut SyntaxState>,
         next: Option<&mut SyntaxState>,
     ) {
+        assert!(prev.as_ref().map(|p| p.updated).unwrap_or(true));
+
         if self.updated {
             return;
         }

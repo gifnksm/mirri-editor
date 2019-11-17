@@ -104,6 +104,17 @@ fn render_char<'a>(
 
 fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     let buffer = &mut editor.buffer;
+
+    // update syntax before drawing
+    let max_file_row = buffer.render_rect.size.rows + buffer.render_rect.origin.y;
+    for y in 0..max_file_row {
+        let [prev, row, next] = buffer.rows.get3_mut(y);
+        if let Some(row) = row {
+            row.update_syntax(buffer.syntax, prev, next);
+        }
+    }
+
+    // rendering
     for y in 0..buffer.render_rect.size.rows {
         let file_row = y + buffer.render_rect.origin.y;
         if file_row >= buffer.rows.len() {
@@ -123,9 +134,7 @@ fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
                 write!(term, "~").context(TerminalOutput)?;
             }
         } else {
-            let [prev, row, next] = buffer.rows.get3_mut(file_row);
-            let row = row.unwrap();
-            row.update_syntax(buffer.syntax, prev, next);
+            let row = &buffer.rows[file_row];
 
             let mut buf = String::new();
             let mut current_col = 0;
