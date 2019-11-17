@@ -62,6 +62,8 @@ pub(crate) fn process_keypress(
                 alt: true,
             } => match key {
                 Char('v') => editor.move_cursor(CursorMove::PageUp),
+                Char('<') => editor.move_cursor(CursorMove::BufferHome),
+                Char('>') => editor.move_cursor(CursorMove::BufferEnd),
                 _ => editor.set_status_msg(format!("{} is undefined", input)),
             },
             Input {

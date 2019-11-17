@@ -147,6 +147,14 @@ impl TextBuffer {
                         + self.render_rect.size.rows,
                 ))
             }
+            BufferHome => {
+                self.c.x = 0;
+                self.c.y = 0;
+            }
+            BufferEnd => {
+                self.c.x = 0;
+                self.c.y = self.rows.len();
+            }
         }
 
         if let Some(scroll) = y_scroll {

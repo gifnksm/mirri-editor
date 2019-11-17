@@ -19,6 +19,8 @@ pub(crate) enum CursorMove {
     End,
     PageUp,
     PageDown,
+    BufferHome,
+    BufferEnd,
 }
 
 #[derive(Debug)]
