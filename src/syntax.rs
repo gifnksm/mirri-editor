@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, iter, path::Path};
+use std::{ffi::OsStr, iter, ops::Range, path::Path};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Syntax<'a> {
@@ -311,6 +311,7 @@ pub(crate) struct SyntaxState {
     updated: bool,
     open: Option<Open<'static>>,
     highlight: Vec<Highlight>,
+    overlay: Option<(Range<usize>, Highlight)>,
 }
 
 impl SyntaxState {
@@ -319,31 +320,26 @@ impl SyntaxState {
             updated: false,
             open: None,
             highlight: vec![],
+            overlay: None,
         }
     }
 
-    pub(crate) fn highlight(&self) -> &[Highlight] {
+    pub(crate) fn highlight_at(&self, at: usize) -> Highlight {
         assert!(self.updated);
-        &self.highlight
+        if let Some((range, hl)) = &self.overlay {
+            if range.contains(&at) {
+                return *hl;
+            }
+        }
+        self.highlight[at]
     }
 
-    pub(crate) fn save(&self, cx: usize, len: usize) -> SavedHighlight {
-        SavedHighlight {
-            cx,
-            hl: self.highlight[cx..cx + len].into(),
-        }
+    pub(crate) fn set_overlay(&mut self, range: Range<usize>, hl: Highlight) {
+        self.overlay = Some((range, hl));
     }
 
-    pub(crate) fn restore(&mut self, saved: &SavedHighlight) {
-        for (idx, hl) in saved.hl.iter().enumerate() {
-            self.highlight[saved.cx + idx] = *hl;
-        }
-    }
-
-    pub(crate) fn overwrite(&mut self, cx: usize, len: usize, new_hl: Highlight) {
-        for hl in &mut self.highlight[cx..cx + len] {
-            *hl = new_hl;
-        }
+    pub(crate) fn clear_overlay(&mut self) {
+        self.overlay = None;
     }
 
     pub(crate) fn invalidate(&mut self) {

@@ -4,8 +4,7 @@ use crate::{
     geom::{Point, Rect, Size},
     output,
     row::Row,
-    syntax::{Highlight, SavedHighlight, Syntax},
-    util::SliceExt,
+    syntax::{Highlight, Syntax},
 };
 use std::path::{Path, PathBuf};
 
@@ -248,7 +247,7 @@ impl TextBuffer {
 pub(crate) struct Find {
     saved_c: Point,
     saved_origin: Point,
-    saved_highlight: Option<(usize, SavedHighlight)>,
+    saved_highlight: Option<usize>,
     is_forward: bool,
     last_match: Option<(usize, usize, usize)>,
 }
@@ -284,8 +283,8 @@ impl Find {
     }
 
     fn restore_highlight(&mut self, buffer: &mut TextBuffer) {
-        if let Some((idx, hl)) = self.saved_highlight.take() {
-            buffer.rows[idx].syntax_mut().restore(&hl);
+        if let Some(idx) = self.saved_highlight.take() {
+            buffer.rows[idx].syntax_mut().clear_overlay();
         }
     }
 
@@ -295,9 +294,7 @@ impl Find {
             .unwrap_or((buffer.c.y, buffer.c.x, buffer.c.x));
 
         for _ in 0..=buffer.rows.len() {
-            let [prev, row, next] = buffer.rows.get3_mut(cy);
-            let row = row.unwrap();
-            row.update_syntax(buffer.syntax, prev, next);
+            let row = &mut buffer.rows[cy];
 
             let (idx_off, res) = if self.is_forward {
                 (cx_e, row.chars[cx_e..].match_indices(query).next())
@@ -312,9 +309,9 @@ impl Find {
                 buffer.c.y = cy;
                 buffer.c.x = cx;
 
-                let syntax = row.syntax_mut();
-                self.saved_highlight = Some((cy, syntax.save(cx, s_len)));
-                syntax.overwrite(cx, s_len, Highlight::Match);
+                row.syntax_mut()
+                    .set_overlay(cx..cx + s_len, Highlight::Match);
+                self.saved_highlight = Some(cy);
                 break;
             }
 

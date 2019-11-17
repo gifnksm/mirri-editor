@@ -131,7 +131,7 @@ fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
             let mut current_col = 0;
             let mut current_color = None;
             for (idx, ch) in row.chars.char_indices() {
-                let hl = row.highlight()[idx];
+                let hl = row.syntax().highlight_at(idx);
                 let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
 
                 let (scr_s, scr_e) = (

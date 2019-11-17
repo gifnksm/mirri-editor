@@ -1,4 +1,4 @@
-use crate::syntax::{Highlight, Syntax, SyntaxState};
+use crate::syntax::{Syntax, SyntaxState};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Row {
@@ -15,12 +15,12 @@ impl Row {
         }
     }
 
-    pub(crate) fn syntax_mut(&mut self) -> &mut SyntaxState {
-        &mut self.syntax_state
+    pub(crate) fn syntax(&self) -> &SyntaxState {
+        &self.syntax_state
     }
 
-    pub(crate) fn highlight(&self) -> &[Highlight] {
-        self.syntax_state.highlight()
+    pub(crate) fn syntax_mut(&mut self) -> &mut SyntaxState {
+        &mut self.syntax_state
     }
 
     pub(crate) fn invalidate_syntax(&mut self) {
