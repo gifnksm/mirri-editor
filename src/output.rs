@@ -9,12 +9,8 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
     ffi::OsStr,
-    fmt::Write as _,
     io::{self, Write},
 };
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-const TAB_STOP: usize = 8;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -49,65 +45,11 @@ pub(crate) fn clear_screen(term: &mut RawTerminal) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn get_render_width(s: &str) -> usize {
-    let mut buf = String::new();
-    let mut cur_col = 0;
-    for (idx, ch) in s.char_indices() {
-        let (_, width) = render_char(ch, &s[idx..], cur_col, &mut buf);
-        cur_col += width;
-    }
-    cur_col
-}
-
-pub(crate) fn get_cx_from_rx(s: &str, rx: usize) -> usize {
-    let mut buf = String::new();
-    let mut cur_col = 0;
-    for (idx, ch) in s.char_indices() {
-        if rx == cur_col {
-            return idx;
-        }
-        let (_, width) = render_char(ch, &s[idx..], cur_col, &mut buf);
-        if cur_col + width > rx {
-            return idx;
-        }
-        cur_col += width;
-    }
-    s.len()
-}
-
-fn render_char<'a>(
-    ch: char,
-    chars: &'a str,
-    cur_col: usize,
-    buf: &'a mut String,
-) -> (&'a str, usize) {
-    if ch == '\t' {
-        let width = TAB_STOP - cur_col % TAB_STOP;
-        buf.clear();
-        write!(buf, "{:w$}", "", w = width).unwrap();
-        return (buf, width);
-    }
-    if ch.is_ascii_control() {
-        let val = ((ch as u8) + b'@') as char;
-        buf.clear();
-        write!(buf, "^{}", val).unwrap();
-        return (buf, 2);
-    }
-    if ch.is_control() {
-        buf.clear();
-        write!(buf, "{}", ch.escape_debug()).unwrap(); // TODO: write appropriate representation
-        return (buf, buf.width()); // TODO: select width_cjk() or width()
-    }
-    let len = ch.len_utf8();
-    (&chars[..len], ch.width().unwrap()) // TODO: select width_cjk() or width()
-}
-
 fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
-    let buffer = &editor.buffer;
-    if buffer.rows.is_empty() {
-        draw_welcome(term, editor)?;
-    } else {
+    if let Some(buffer) = &editor.buffer {
         draw_rows(term, buffer)?;
+    } else {
+        draw_welcome(term, editor)?;
     }
     Ok(())
 }
@@ -144,62 +86,26 @@ fn draw_welcome(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
 }
 
 fn draw_rows(term: &mut RawTerminal, buffer: &TextBuffer) -> Result<()> {
-    for y in 0..buffer.render_rect.size.rows {
-        let file_row = y + buffer.render_rect.origin.y;
-        if let Some(row) = buffer.rows.get(file_row) {
-            let (scr_s, scr_e) = (
-                buffer.render_rect.origin.x,
-                buffer.render_rect.origin.x + buffer.render_rect.size.cols,
-            );
-
-            let mut buf = String::new();
-            let mut current_col = 0;
-            let mut current_color = None;
-            for (idx, ch) in row.chars.char_indices() {
-                let col_s = current_col;
-                if col_s >= scr_e {
-                    break;
+    for row_render in buffer.render_with_highlight() {
+        let mut current_color = None;
+        for (hl, item) in row_render {
+            if hl == Highlight::Normal {
+                if current_color.is_some() {
+                    current_color = None;
+                    write!(term, "\x1b[39;49m").context(TerminalOutput)?;
                 }
-
-                let (render, width) = render_char(ch, &row.chars[idx..], current_col, &mut buf);
-                let col_e = current_col + width;
-                current_col += width;
-                if col_e <= scr_s {
-                    continue;
+            } else {
+                let color = hl.to_color();
+                if current_color != Some(color) {
+                    current_color = Some(color);
+                    write!(term, "\x1b[{};{}m", color.0, color.1).context(TerminalOutput)?;
                 }
-
-                let hl = row.syntax().highlight_at(idx);
-                if hl == Highlight::Normal {
-                    if current_color.is_some() {
-                        current_color = None;
-                        write!(term, "\x1b[39;49m").context(TerminalOutput)?;
-                    }
-                } else {
-                    let color = hl.to_color();
-                    if current_color != Some(color) {
-                        current_color = Some(color);
-                        write!(term, "\x1b[{};{}m", color.0, color.1).context(TerminalOutput)?;
-                    }
-                }
-                if col_s < scr_s {
-                    let width = col_e - scr_s;
-                    write!(term, "{:w$}", "", w = width).context(TerminalOutput)?;
-                    continue;
-                }
-                if col_e > scr_e {
-                    let width = scr_e - col_s;
-                    write!(term, "{:w$}", "", w = width).context(TerminalOutput)?;
-                    continue;
-                }
-                write!(term, "{}", render).context(TerminalOutput)?;
             }
-            if current_color.is_some() {
-                write!(term, "\x1b[39;49m").context(TerminalOutput)?;
-            }
-        } else {
-            write!(term, "~").context(TerminalOutput)?;
+            write!(term, "{}", item).context(TerminalOutput)?;
         }
-
+        if current_color.is_some() {
+            write!(term, "\x1b[39;49m").context(TerminalOutput)?;
+        }
         // EL - Erase In Line
         //  <esc> [ <param> K
         // Params:

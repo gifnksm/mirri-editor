@@ -2,6 +2,7 @@ use crate::{
     decode::Decoder,
     geom::{Point, Size},
     input,
+    syntax::Syntax,
     terminal::RawTerminal,
     text_buffer::{self, Status, TextBuffer},
 };
@@ -25,7 +26,7 @@ pub(crate) enum CursorMove {
 
 #[derive(Debug)]
 pub(crate) struct Editor {
-    pub(crate) buffer: TextBuffer,
+    pub(crate) buffer: Option<TextBuffer>,
     render_size: Size,
 
     pub(crate) quit_times: usize,
@@ -35,7 +36,7 @@ pub(crate) struct Editor {
 impl Editor {
     pub(crate) fn new(render_size: Size) -> Self {
         Editor {
-            buffer: TextBuffer::new(render_size),
+            buffer: None,
             render_size,
             quit_times: QUIT_TIMES,
             status_msg: None,
@@ -45,7 +46,7 @@ impl Editor {
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
         let filename = filename.into();
         match TextBuffer::from_file(filename, self.render_size) {
-            Ok(buffer) => self.buffer = buffer,
+            Ok(buffer) => self.buffer = Some(buffer),
             Err(e) => self.set_status_message(format!("{}", e)),
         }
     }
@@ -55,18 +56,22 @@ impl Editor {
         term: &mut RawTerminal,
         decoder: &mut Decoder,
     ) -> input::Result<()> {
-        if self.buffer.filename().is_none() {
+        if self.buffer.is_none() {
+            return Ok(());
+        }
+
+        if self.buffer.as_ref().unwrap().filename().is_none() {
             if let Some(filename) =
                 input::prompt(term, decoder, self, "Save as: {} (ESC to cancel)")?.map(Into::into)
             {
-                self.buffer.set_filename(Some(filename));
+                self.buffer.as_mut().unwrap().set_filename(Some(filename));
             } else {
                 self.set_status_message("Save aborted");
                 return Ok(());
             }
         }
 
-        match self.buffer.save() {
+        match self.buffer.as_mut().unwrap().save() {
             Ok(bytes) => {
                 self.set_status_message(format!("{} bytes written to disk", bytes));
             }
@@ -79,11 +84,25 @@ impl Editor {
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
-        self.buffer.is_dirty()
+        if let Some(buffer) = &self.buffer {
+            buffer.is_dirty()
+        } else {
+            false
+        }
     }
 
     pub(crate) fn status(&self) -> Status {
-        self.buffer.status()
+        if let Some(buffer) = &self.buffer {
+            buffer.status()
+        } else {
+            Status {
+                filename: None,
+                is_dirty: false,
+                cursor: Point::default(),
+                lines: 0,
+                syntax: Syntax::select(None::<String>),
+            }
+        }
     }
 
     pub(crate) fn render_size(&self) -> Size {
@@ -91,16 +110,24 @@ impl Editor {
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
-        self.buffer.set_render_size(render_size);
+        if let Some(buffer) = &mut self.buffer {
+            buffer.set_render_size(render_size);
+        }
         self.render_size = render_size;
     }
 
     pub(crate) fn scroll(&mut self) -> Point {
-        self.buffer.scroll()
+        if let Some(buffer) = &mut self.buffer {
+            buffer.scroll()
+        } else {
+            Point::default()
+        }
     }
 
     pub(crate) fn update_highlight(&mut self) {
-        self.buffer.update_highlight();
+        if let Some(buffer) = &mut self.buffer {
+            buffer.update_highlight();
+        }
     }
 
     pub(crate) fn status_message(&self) -> Option<&str> {
@@ -120,30 +147,44 @@ impl Editor {
         }
     }
 
+    fn buffer_or_create(&mut self) -> &mut TextBuffer {
+        if self.buffer.is_none() {
+            self.buffer = Some(TextBuffer::new(self.render_size));
+        }
+        self.buffer.as_mut().unwrap()
+    }
+
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
-        self.buffer.move_cursor(mv)
+        if let Some(buffer) = &mut self.buffer {
+            buffer.move_cursor(mv)
+        }
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) {
-        self.buffer.insert_char(ch)
+        self.buffer_or_create().insert_char(ch)
     }
 
     pub(crate) fn insert_newline(&mut self) {
-        self.buffer.insert_newline()
+        self.buffer_or_create().insert_newline()
     }
 
     pub(crate) fn delete_back_char(&mut self) {
-        self.buffer.delete_back_char()
+        if let Some(buffer) = &mut self.buffer {
+            buffer.delete_back_char();
+        }
     }
 
     pub(crate) fn delete_char(&mut self) {
-        self.buffer.delete_char()
+        if let Some(buffer) = &mut self.buffer {
+            buffer.delete_char();
+        }
     }
 
-    pub(crate) fn find_start(&mut self) -> Find {
-        Find {
-            inner: self.buffer.find_start(),
-        }
+    pub(crate) fn find_start(&mut self) -> Option<Find> {
+        let buffer = self.buffer.as_mut()?;
+        Some(Find {
+            inner: buffer.find_start(),
+        })
     }
 }
 
@@ -154,18 +195,28 @@ pub(crate) struct Find {
 
 impl Find {
     pub(crate) fn execute(&mut self, editor: &mut Editor, query: &str) {
-        self.inner.execute(&mut editor.buffer, query)
+        if let Some(buffer) = &mut editor.buffer {
+            self.inner.execute(buffer, query)
+        }
     }
     pub(crate) fn cancel(&mut self, editor: &mut Editor, query: &str) {
-        self.inner.cancel(&mut editor.buffer, query)
+        if let Some(buffer) = &mut editor.buffer {
+            self.inner.cancel(buffer, query)
+        }
     }
     pub(crate) fn input(&mut self, editor: &mut Editor, query: &str) {
-        self.inner.input(&mut editor.buffer, query)
+        if let Some(buffer) = &mut editor.buffer {
+            self.inner.input(buffer, query)
+        }
     }
     pub(crate) fn search_forward(&mut self, editor: &mut Editor, query: &str) {
-        self.inner.search_forward(&mut editor.buffer, query)
+        if let Some(buffer) = &mut editor.buffer {
+            self.inner.search_forward(buffer, query)
+        }
     }
     pub(crate) fn search_backward(&mut self, editor: &mut Editor, query: &str) {
-        self.inner.search_backward(&mut editor.buffer, query)
+        if let Some(buffer) = &mut editor.buffer {
+            self.inner.search_backward(buffer, query)
+        }
     }
 }

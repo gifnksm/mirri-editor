@@ -10,7 +10,12 @@ pub(crate) fn find(
     decoder: &mut Decoder,
     editor: &mut Editor,
 ) -> input::Result<()> {
-    let mut find = editor.find_start();
+    let mut find = if let Some(find) = editor.find_start() {
+        find
+    } else {
+        return Ok(());
+    };
+
     let _query = input::prompt_with_callback(
         term,
         decoder,

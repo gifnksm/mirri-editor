@@ -283,6 +283,7 @@ pub(crate) enum Highlight {
     String,
     Number,
     Match,
+    LineMarker,
 }
 
 impl Highlight {
@@ -296,6 +297,7 @@ impl Highlight {
             Self::String => (35, 40),
             Self::Number => (31, 40),
             Self::Match => (34, 40),
+            Self::LineMarker => (37, 40),
         }
     }
 }

@@ -2,28 +2,37 @@ use crate::{
     editor::CursorMove,
     file,
     geom::{Point, Rect, Size},
-    output,
-    row::Row,
+    row::{self, Row},
     syntax::{Highlight, Syntax},
     util::SliceExt,
 };
-use std::path::{Path, PathBuf};
+use std::{
+    iter,
+    path::{Path, PathBuf},
+    usize,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct TextBuffer {
     filename: Option<PathBuf>,
-    pub(crate) syntax: &'static Syntax<'static>,
-    pub(crate) c: Point,
-    pub(crate) rows: Vec<Row>,
+    syntax: &'static Syntax<'static>,
+    c: Point,
+    rows: Vec<Row>,
     is_dirty: bool,
+    empty_row: Row,
 
-    pub(crate) render_rect: Rect,
+    render_rect: Rect,
 }
 
 impl TextBuffer {
     pub(crate) fn new(render_size: Size) -> Self {
         let filename = None;
         let syntax = Syntax::select(filename.as_ref());
+        let mut empty_row = Row::new("~".into());
+        empty_row
+            .syntax_mut()
+            .set_overlay(0..1, Highlight::LineMarker);
+
         Self {
             filename,
             syntax,
@@ -34,6 +43,7 @@ impl TextBuffer {
                 origin: Point::default(),
                 size: render_size,
             },
+            empty_row,
         }
     }
 
@@ -67,12 +77,26 @@ impl TextBuffer {
         self.render_rect.size = render_size;
     }
 
+    pub(crate) fn render_with_highlight(&self) -> impl Iterator<Item = row::RenderWithHighlight> {
+        let render_origin = self.render_rect.origin.x;
+        let render_width = self.render_rect.size.cols;
+
+        self.rows[self.render_rect.origin.y..]
+            .iter()
+            .map(move |row| row.render_with_highlight(render_origin, render_width))
+            .chain(
+                iter::repeat(&self.empty_row)
+                    .map(move |row| row.render_with_highlight(0, render_width)),
+            )
+            .take(self.render_rect.size.rows)
+    }
+
     pub(crate) fn scroll(&mut self) -> Point {
-        let rx = if let Some(row) = self.rows.get(self.c.y) {
-            output::get_render_width(&row.chars[..self.c.x])
-        } else {
-            0
-        };
+        let rx = self
+            .rows
+            .get(self.c.y)
+            .map(|row| row.get_rx_from_cx(self.c.x))
+            .unwrap_or(0);
 
         if self.render_rect.origin.y > self.c.y {
             self.render_rect.origin.y = self.c.y;
@@ -99,11 +123,12 @@ impl TextBuffer {
                 row.update_highlight(self.syntax, prev, next);
             }
         }
+        self.empty_row.update_highlight(self.syntax, None, None);
     }
 
     pub(crate) fn save(&mut self) -> file::Result<usize> {
         let filename = self.filename.as_ref().unwrap();
-        let lines = self.rows.iter().map(|row| &row.chars);
+        let lines = self.rows.iter().map(|row| row.chars());
         let bytes = file::save(&filename, lines)?;
         self.is_dirty = false;
         Ok(bytes)
@@ -131,16 +156,16 @@ impl TextBuffer {
         let mut y_scroll = None;
         match mv {
             Left => {
-                if let Some(ch) = row.and_then(|row| row.chars[..self.c.x].chars().next_back()) {
+                if let Some(ch) = row.and_then(|row| row.chars()[..self.c.x].chars().next_back()) {
                     self.c.x -= ch.len_utf8();
                 } else if self.c.y > 0 {
                     self.c.y -= 1;
-                    self.c.x = self.rows[self.c.y].chars.len();
+                    self.c.x = self.rows[self.c.y].chars().len();
                 }
             }
             Right => {
                 if let Some(row) = row {
-                    if let Some(ch) = row.chars[self.c.x..].chars().next() {
+                    if let Some(ch) = row.chars()[self.c.x..].chars().next() {
                         self.c.x += ch.len_utf8();
                     } else {
                         self.c.y += 1;
@@ -151,7 +176,7 @@ impl TextBuffer {
             Home => self.c.x = 0,
             End => {
                 if let Some(row) = row {
-                    self.c.x = row.chars.len();
+                    self.c.x = row.chars().len();
                 }
             }
             Up => y_scroll = Some(YScroll::Up(1)),
@@ -173,7 +198,7 @@ impl TextBuffer {
             }
             BufferEnd => {
                 if let Some(row) = self.rows.last() {
-                    self.c.x = row.chars.len();
+                    self.c.x = row.chars().len();
                     self.c.y = self.rows.len() - 1;
                 }
             }
@@ -184,7 +209,7 @@ impl TextBuffer {
             let rx = self
                 .rows
                 .get(self.c.y)
-                .map(|row| output::get_render_width(&row.chars[..self.c.x]))
+                .map(|row| row.get_rx_from_cx(self.c.x))
                 .unwrap_or(0);
             match scroll {
                 YScroll::Up(dy) => self.c.y = self.c.y.saturating_sub(dy),
@@ -199,7 +224,7 @@ impl TextBuffer {
             self.c.x = self
                 .rows
                 .get(self.c.y)
-                .map(|row| output::get_cx_from_rx(&row.chars, rx))
+                .map(|row| row.get_cx_from_rx(rx))
                 .unwrap_or(0);
         }
     }
@@ -247,11 +272,11 @@ impl TextBuffer {
         let (left, right) = self.rows.split_at_mut(self.c.y + 1);
         let cur = left.last_mut().unwrap();
         let next = right.first();
-        if self.c.x < cur.chars.len() {
+        if self.c.x < cur.chars().len() {
             cur.delete_char(self.c.x);
             self.is_dirty = true;
         } else if let Some(next) = next {
-            cur.append_str(&next.chars);
+            cur.append_str(&next.chars());
             self.delete_row(self.c.y + 1);
             self.is_dirty = true;
         }
@@ -331,9 +356,9 @@ impl Find {
             let row = &mut buffer.rows[cy];
 
             let (idx_off, res) = if self.is_forward {
-                (cx_e, row.chars[cx_e..].match_indices(query).next())
+                (cx_e, row.chars()[cx_e..].match_indices(query).next())
             } else {
-                (0, row.chars[..cx_s].rmatch_indices(query).next())
+                (0, row.chars()[..cx_s].rmatch_indices(query).next())
             };
 
             if let Some((dx, s)) = res {
@@ -358,7 +383,7 @@ impl Find {
             }
 
             let row = &mut buffer.rows[cy];
-            cx_s = row.chars.len();
+            cx_s = row.chars().len();
             cx_e = 0;
         }
     }
