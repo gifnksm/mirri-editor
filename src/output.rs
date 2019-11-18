@@ -289,7 +289,9 @@ pub(crate) fn refresh_screen(
         render_size.rows -= 2; // status bar height + message bar height
         editor.set_render_size(render_size);
     }
-    write!(term, "\x1b[?25l").context(TerminalOutput)?; // hide cursor
+
+    let _hide_cursor = term.hide_cursor().context(Terminal)?;
+
     write!(term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
     let r = editor.scroll();
@@ -299,7 +301,6 @@ pub(crate) fn refresh_screen(
     draw_message_bar(term, editor)?;
 
     write!(term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor
-    write!(term, "\x1b[?25h").context(TerminalOutput)?; // show cursor
 
     Ok(())
 }

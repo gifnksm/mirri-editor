@@ -83,6 +83,10 @@ impl RawTerminal {
         Ok(term)
     }
 
+    pub(crate) fn hide_cursor(&mut self) -> Result<HideCursor> {
+        HideCursor::new(io::stdout())
+    }
+
     pub(crate) fn maybe_update_screen_size(&mut self, decoder: &mut Decoder) -> Result<bool> {
         let need_update = self.sigwinch_receiver.received();
         if need_update {
@@ -158,5 +162,26 @@ impl Write for RawTerminal {
     }
     fn flush(&mut self) -> io::Result<()> {
         self.stdout.flush()
+    }
+}
+
+pub(crate) struct HideCursor {
+    stdout: Stdout,
+}
+
+impl HideCursor {
+    fn new(mut stdout: Stdout) -> Result<Self> {
+        // Hide cursor
+        write!(&mut stdout, "\x1b[?25l").context(TerminalOutput)?;
+
+        Ok(HideCursor { stdout })
+    }
+}
+
+impl Drop for HideCursor {
+    fn drop(&mut self) {
+        // Show cursor
+        write!(&mut self.stdout, "\x1b[?25h").expect("failed to write to terminal");
+        self.stdout.flush().expect("failed to flush to stdout");
     }
 }
