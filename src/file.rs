@@ -1,7 +1,7 @@
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader, Write as _},
+    io::{self, BufRead, BufReader, BufWriter, Write as _},
     path::{Path, PathBuf},
 };
 
@@ -53,20 +53,28 @@ pub(crate) fn save(
     lines: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> Result<usize> {
     let filename = filename.as_ref();
-    let mut file = File::create(filename).with_context(|| Open {
+
+    let file = File::create(filename).with_context(|| Open {
         filename: filename.to_path_buf(),
     })?;
+    let mut writer = BufWriter::new(file);
 
     let mut bytes = 0;
-    for line in lines {
+    for (idx, line) in lines.into_iter().enumerate() {
+        if idx != 0 {
+            writeln!(&mut writer).with_context(|| Write {
+                filename: filename.to_path_buf(),
+            })?;
+            bytes += 1;
+        }
         let line = line.as_ref();
-        writeln!(&mut file, "{}", line).with_context(|| Write {
+        write!(&mut writer, "{}", line).with_context(|| Write {
             filename: filename.to_path_buf(),
         })?;
-        bytes += line.len() + 1; // sizeof line + '\n'
+        bytes += line.len();
     }
 
-    file.flush().with_context(|| Write {
+    writer.flush().with_context(|| Write {
         filename: filename.to_path_buf(),
     })?;
 
