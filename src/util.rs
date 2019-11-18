@@ -9,6 +9,9 @@ impl<T> SliceExt for [T] {
     type Item = T;
 
     fn get3(&self, at: usize) -> [Option<&T>; 3] {
+        if at > self.len() {
+            return [None, None, None];
+        }
         let (head, tail) = self.split_at(at);
         let prev = head.last();
         if let Some((elem, tail)) = tail.split_first() {
@@ -19,6 +22,9 @@ impl<T> SliceExt for [T] {
     }
 
     fn get3_mut(&mut self, at: usize) -> [Option<&mut T>; 3] {
+        if at > self.len() {
+            return [None, None, None];
+        }
         let (head, tail) = self.split_at_mut(at);
         let prev = head.last_mut();
         if let Some((elem, tail)) = tail.split_first_mut() {
