@@ -8,7 +8,7 @@ use std::{
     io::{self, Read, Stdin, Stdout, Write},
     mem,
     os::unix::io::AsRawFd,
-    str,
+    panic, str,
 };
 use termios::Termios;
 
@@ -67,6 +67,14 @@ impl RawTerminal {
         raw.c_cc[VTIME] = 1; // maximum amount of time to wait before `read()` returns
 
         tcsetattr(fd, TCSAFLUSH, &raw).context(EnterRawMode)?;
+
+        let saved_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            if let Err(e) = tcsetattr(fd, TCSAFLUSH, &orig_termios) {
+                eprintln!("failed to reset terminal mode: {}", e);
+            }
+            saved_hook(info);
+        }));
 
         let sigwinch_receiver = SignalReceiver::new_sigwinch().context(SignalReceiverInit)?;
 
