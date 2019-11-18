@@ -172,8 +172,10 @@ impl TextBuffer {
                 self.c.y = 0;
             }
             BufferEnd => {
-                self.c.x = 0;
-                self.c.y = self.rows.len();
+                if let Some(row) = self.rows.last() {
+                    self.c.x = row.chars.len();
+                    self.c.y = self.rows.len() - 1;
+                }
             }
         }
 
