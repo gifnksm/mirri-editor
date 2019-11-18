@@ -60,31 +60,8 @@ impl RawTerminal {
         let mut raw = Termios::from_fd(fd).context(EnterRawMode)?;
         let orig_termios = raw;
 
-        // See termios(3) for detail.
-
-        // Set input flags:
-        // * `!BRKINT` : disable break condition
-        // * `!ICRNL`  : disable CR to NL translation
-        // * `!INPCK`  : disable input parity checking
-        // * `!ISTRIP` : disable stripping off eighth bit
-        // * `!IXON`   : disable software flow control (Ctrl-Q, Ctrl-S)
-        raw.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-
-        // Set output flags:
-        // * `!OPOST` : disable output processing such as "\n" to "\r\n" translation.
-        raw.c_oflag &= !OPOST;
-
-        // Set control flags:
-        // * `CS8` : set character size as 8
-        raw.c_cflag |= CS8;
-
-        // Set local flags:
-        // * `!ECHO`   : disable echoing
-        // * `!ICANON` : disable canonical mode
-        // * `!IEXTEN` : disable input processing such as Ctrl-V
-        // * `!ISIG`   : disable generating the signal when receiving INTR (Ctrl-C), QUIT (Ctrl-\), SUSP (Ctrl-Z), or DSUSP (Ctrl-Y).
-        raw.c_lflag &= !(ECHO | ICANON | IEXTEN | ISIG);
-
+        // Set raw mode flags
+        termios::cfmakeraw(&mut raw);
         // Set control characters
         raw.c_cc[VMIN] = 0; // minimum number of bytes of input needed before `read()`
         raw.c_cc[VTIME] = 1; // maximum amount of time to wait before `read()` returns
