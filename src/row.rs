@@ -27,7 +27,7 @@ impl Row {
         self.syntax_state.invalidate();
     }
 
-    pub(crate) fn update_syntax(
+    pub(crate) fn update_highlight(
         &mut self,
         syntax: &'static Syntax,
         prev_row: Option<&mut Self>,

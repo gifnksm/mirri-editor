@@ -46,7 +46,7 @@ fn run() -> Result<()> {
     render_size.rows -= 2;
     let mut editor = Editor::new(render_size);
 
-    editor.set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
+    editor.set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-G = find");
 
     if let Some(file) = &opt.file {
         editor.open(file);

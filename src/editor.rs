@@ -3,7 +3,7 @@ use crate::{
     geom::{Point, Size},
     input,
     terminal::RawTerminal,
-    text_buffer::{self, TextBuffer},
+    text_buffer::{self, Status, TextBuffer},
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -42,15 +42,11 @@ impl Editor {
         }
     }
 
-    pub(crate) fn is_dirty(&self) -> bool {
-        self.buffer.is_dirty()
-    }
-
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
         let filename = filename.into();
         match TextBuffer::from_file(filename, self.render_size) {
             Ok(buffer) => self.buffer = buffer,
-            Err(e) => self.set_status_msg(format!("{}", e)),
+            Err(e) => self.set_status_message(format!("{}", e)),
         }
     }
 
@@ -65,21 +61,33 @@ impl Editor {
             {
                 self.buffer.set_filename(Some(filename));
             } else {
-                self.set_status_msg("Save aborted");
+                self.set_status_message("Save aborted");
                 return Ok(());
             }
         }
 
         match self.buffer.save() {
             Ok(bytes) => {
-                self.set_status_msg(format!("{} bytes written to disk", bytes));
+                self.set_status_message(format!("{} bytes written to disk", bytes));
             }
             Err(e) => {
-                self.set_status_msg(format!("Can't save! {}", e));
+                self.set_status_message(format!("Can't save! {}", e));
             }
         }
 
         Ok(())
+    }
+
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.buffer.is_dirty()
+    }
+
+    pub(crate) fn status(&self) -> Status {
+        self.buffer.status()
+    }
+
+    pub(crate) fn render_size(&self) -> Size {
+        self.render_size
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
@@ -87,17 +95,29 @@ impl Editor {
         self.render_size = render_size;
     }
 
-    pub(crate) fn render_size(&self) -> Size {
-        self.render_size
-    }
-
     pub(crate) fn scroll(&mut self) -> Point {
         self.buffer.scroll()
     }
 
-    pub(crate) fn set_status_msg(&mut self, s: impl Into<String>) {
+    pub(crate) fn update_highlight(&mut self) {
+        self.buffer.update_highlight();
+    }
+
+    pub(crate) fn status_message(&self) -> Option<&str> {
+        self.status_msg.as_ref().map(|s| s.1.as_str())
+    }
+
+    pub(crate) fn set_status_message(&mut self, s: impl Into<String>) {
         let now = Instant::now();
         self.status_msg = Some((now, s.into()));
+    }
+
+    pub(crate) fn update_status_message(&mut self) {
+        if let Some((time, _msg)) = &mut self.status_msg {
+            if time.elapsed().as_secs() >= 5 {
+                self.status_msg = None;
+            }
+        }
     }
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {

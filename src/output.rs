@@ -3,8 +3,7 @@ use crate::{
     editor::Editor,
     syntax::Highlight,
     terminal::{self, RawTerminal},
-    text_buffer::TextBuffer,
-    util::SliceExt,
+    text_buffer::{Status, TextBuffer},
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
@@ -103,8 +102,8 @@ fn render_char<'a>(
     (&chars[..len], ch.width().unwrap()) // TODO: select width_cjk() or width()
 }
 
-fn draw_main(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
-    let buffer = &mut editor.buffer;
+fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
+    let buffer = &editor.buffer;
     if buffer.rows.is_empty() {
         draw_welcome(term, editor)?;
     } else {
@@ -144,17 +143,7 @@ fn draw_welcome(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
     Ok(())
 }
 
-fn draw_rows(term: &mut RawTerminal, buffer: &mut TextBuffer) -> Result<()> {
-    // update syntax before drawing
-    let max_file_row = buffer.render_rect.size.rows + buffer.render_rect.origin.y;
-    for y in 0..max_file_row {
-        let [prev, row, next] = buffer.rows.get3_mut(y);
-        if let Some(row) = row {
-            row.update_syntax(buffer.syntax, prev, next);
-        }
-    }
-
-    // rendering
+fn draw_rows(term: &mut RawTerminal, buffer: &TextBuffer) -> Result<()> {
     for y in 0..buffer.render_rect.size.rows {
         let file_row = y + buffer.render_rect.origin.y;
         if let Some(row) = buffer.rows.get(file_row) {
@@ -224,26 +213,25 @@ fn draw_rows(term: &mut RawTerminal, buffer: &mut TextBuffer) -> Result<()> {
     Ok(())
 }
 
-fn draw_status_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
+fn draw_status_bar(term: &mut RawTerminal, status: &Status) -> Result<()> {
     let default_path = OsStr::new("[No Name]");
-    let path = editor
-        .buffer
-        .filename()
+    let path = status
+        .filename
         .and_then(|p| p.file_name())
         .unwrap_or(default_path);
-    let dirty_indicator = if editor.is_dirty() { "(modified)" } else { "" };
+    let dirty_indicator = if status.is_dirty { "(modified)" } else { "" };
 
     let l_status = format!(
         "{:.20} - {} lines {}",
         path.to_string_lossy(),
-        editor.buffer.rows.len(),
+        status.lines,
         dirty_indicator
     );
     let r_status = format!(
         "{} | {}/{}",
-        editor.buffer.syntax.filetype,
-        editor.buffer.c.y + 1,
-        editor.buffer.rows.len()
+        status.syntax.filetype,
+        status.cursor.y + 1,
+        status.lines
     );
 
     let l_width = cmp::min(l_status.len(), term.screen_size.cols);
@@ -265,15 +253,11 @@ fn draw_status_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     Ok(())
 }
 
-fn draw_message_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
+fn draw_message_bar(term: &mut RawTerminal, message: Option<&str>) -> Result<()> {
     write!(term, "\x1b[K").context(TerminalOutput)?;
-    if let Some((time, msg)) = &mut editor.status_msg {
-        if time.elapsed().as_secs() < 5 {
-            let cols = term.screen_size.cols;
-            write!(term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
-        } else {
-            editor.status_msg = None;
-        }
+    if let Some(msg) = message {
+        let cols = term.screen_size.cols;
+        write!(term, "{:.w$}", msg, w = cols).context(TerminalOutput)?;
     }
     Ok(())
 }
@@ -295,10 +279,12 @@ pub(crate) fn refresh_screen(
     write!(term, "\x1b[H").context(TerminalOutput)?; // move cursor to top-left corner
 
     let r = editor.scroll();
+    editor.update_status_message();
+    editor.update_highlight();
 
     draw_main(term, editor)?;
-    draw_status_bar(term, editor)?;
-    draw_message_bar(term, editor)?;
+    draw_status_bar(term, &editor.status())?;
+    draw_message_bar(term, editor.status_message())?;
 
     write!(term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor
 

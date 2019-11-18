@@ -5,6 +5,7 @@ use crate::{
     output,
     row::Row,
     syntax::{Highlight, Syntax},
+    util::SliceExt,
 };
 use std::path::{Path, PathBuf};
 
@@ -14,7 +15,7 @@ pub(crate) struct TextBuffer {
     pub(crate) syntax: &'static Syntax<'static>,
     pub(crate) c: Point,
     pub(crate) rows: Vec<Row>,
-    dirty: bool,
+    is_dirty: bool,
 
     pub(crate) render_rect: Rect,
 }
@@ -28,7 +29,7 @@ impl TextBuffer {
             syntax,
             c: Point::default(),
             rows: vec![],
-            dirty: false,
+            is_dirty: false,
             render_rect: Rect {
                 origin: Point::default(),
                 size: render_size,
@@ -44,12 +45,22 @@ impl TextBuffer {
         for line in lines {
             buf.append_row(line);
         }
-        buf.dirty = false;
+        buf.is_dirty = false;
         Ok(buf)
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
-        self.dirty
+        self.is_dirty
+    }
+
+    pub(crate) fn status(&self) -> Status {
+        Status {
+            filename: self.filename.as_ref().map(|p| p.as_ref()),
+            is_dirty: self.is_dirty,
+            cursor: self.c,
+            lines: self.rows.len(),
+            syntax: self.syntax,
+        }
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
@@ -81,11 +92,20 @@ impl TextBuffer {
         }
     }
 
+    pub(crate) fn update_highlight(&mut self) {
+        for cy in 0..self.render_rect.origin.y + self.render_rect.size.rows {
+            let [prev, row, next] = self.rows.get3_mut(cy);
+            if let Some(row) = row {
+                row.update_highlight(self.syntax, prev, next);
+            }
+        }
+    }
+
     pub(crate) fn save(&mut self) -> file::Result<usize> {
         let filename = self.filename.as_ref().unwrap();
         let lines = self.rows.iter().map(|row| &row.chars);
         let bytes = file::save(&filename, lines)?;
-        self.dirty = false;
+        self.is_dirty = false;
         Ok(bytes)
     }
 
@@ -184,7 +204,7 @@ impl TextBuffer {
 
     fn insert_row(&mut self, at: usize, s: String) {
         self.rows.insert(at, Row::new(s));
-        self.dirty = true;
+        self.is_dirty = true;
     }
 
     fn append_row(&mut self, s: String) {
@@ -193,7 +213,7 @@ impl TextBuffer {
 
     fn delete_row(&mut self, at: usize) {
         self.rows.remove(at);
-        self.dirty = true;
+        self.is_dirty = true;
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) {
@@ -202,7 +222,7 @@ impl TextBuffer {
         }
         self.rows[self.c.y].insert_char(self.c.x, ch);
         self.move_cursor(CursorMove::Right);
-        self.dirty = true;
+        self.is_dirty = true;
     }
 
     pub(crate) fn insert_newline(&mut self) {
@@ -213,7 +233,7 @@ impl TextBuffer {
             self.append_row("".into());
         }
         self.move_cursor(CursorMove::Right);
-        self.dirty = true;
+        self.is_dirty = true;
     }
 
     pub(crate) fn delete_back_char(&mut self) {
@@ -227,11 +247,11 @@ impl TextBuffer {
         let next = right.first();
         if self.c.x < cur.chars.len() {
             cur.delete_char(self.c.x);
-            self.dirty = true;
+            self.is_dirty = true;
         } else if let Some(next) = next {
             cur.append_str(&next.chars);
             self.delete_row(self.c.y + 1);
-            self.dirty = true;
+            self.is_dirty = true;
         }
     }
 
@@ -244,6 +264,15 @@ impl TextBuffer {
             last_match: None,
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct Status<'a> {
+    pub(crate) filename: Option<&'a Path>,
+    pub(crate) is_dirty: bool,
+    pub(crate) cursor: Point,
+    pub(crate) lines: usize,
+    pub(crate) syntax: &'a Syntax<'a>,
 }
 
 #[derive(Debug)]

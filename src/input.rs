@@ -35,7 +35,7 @@ pub(crate) fn process_keypress(
                 Char('?') => editor.delete_back_char(), // Ctrl-? : Backspace
                 Char('Q') => {
                     if editor.is_dirty() && editor.quit_times > 0 {
-                        editor.set_status_msg(format!(
+                        editor.set_status_message(format!(
                             "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
                             editor.quit_times
                         ));
@@ -54,7 +54,7 @@ pub(crate) fn process_keypress(
                 Char('S') => editor.save(term, decoder)?,
                 Char('G') => find::find(term, decoder, editor)?,
                 Char('H') => editor.delete_back_char(),
-                _ => editor.set_status_msg(format!("{} is undefined", input)),
+                _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {
                 key,
@@ -64,7 +64,7 @@ pub(crate) fn process_keypress(
                 Char('v') => editor.move_cursor(CursorMove::PageUp),
                 Char('<') => editor.move_cursor(CursorMove::BufferHome),
                 Char('>') => editor.move_cursor(CursorMove::BufferEnd),
-                _ => editor.set_status_msg(format!("{} is undefined", input)),
+                _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {
                 key,
@@ -82,7 +82,7 @@ pub(crate) fn process_keypress(
                 Delete => editor.delete_char(),
                 Char(ch) => editor.insert_char(ch),
             },
-            _ => editor.set_status_msg(format!("{} is undefined", input)),
+            _ => editor.set_status_message(format!("{} is undefined", input)),
         }
 
         editor.quit_times = editor::QUIT_TIMES;
@@ -121,7 +121,7 @@ pub(crate) fn prompt_with_callback(
     let mut buf = String::new();
     loop {
         let prompt = prompt.replace("{}", &buf);
-        editor.set_status_msg(prompt);
+        editor.set_status_message(prompt);
         output::refresh_screen(term, decoder, editor).context(OutputError)?;
 
         while let Some(input) = decoder.read_input(term).context(DecodeError)? {
@@ -137,14 +137,14 @@ pub(crate) fn prompt_with_callback(
                     }
                     Char('M') => {
                         if !buf.is_empty() {
-                            editor.set_status_msg("");
+                            editor.set_status_message("");
                             Some(PromptCommand::Execute)
                         } else {
                             None
                         }
                     }
                     Char('[') => {
-                        editor.set_status_msg("");
+                        editor.set_status_message("");
                         Some(PromptCommand::Cancel)
                     }
                     _ => None,
