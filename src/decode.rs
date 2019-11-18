@@ -283,7 +283,7 @@ mod tests {
         let input = (0x00..=0x1f).chain(iter::once(0x7f));
         let expected = [
             '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-            'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_',
+            'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '?',
         ]
         .iter()
         .map(|ch| Input::ctrl(Char(*ch)))
@@ -297,6 +297,6 @@ mod tests {
                 output.push(input);
             }
         }
-        assert_eq!(output, expected);
+        itertools::assert_equal(output, expected);
     }
 }
