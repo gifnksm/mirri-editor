@@ -3,6 +3,7 @@ use crate::{
     editor::Editor,
     syntax::Highlight,
     terminal::{self, RawTerminal},
+    text_buffer::TextBuffer,
     util::SliceExt,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -102,9 +103,48 @@ fn render_char<'a>(
     (&chars[..len], ch.width().unwrap()) // TODO: select width_cjk() or width()
 }
 
-fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
+fn draw_main(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     let buffer = &mut editor.buffer;
+    if buffer.rows.is_empty() {
+        draw_welcome(term, editor)?;
+    } else {
+        draw_rows(term, buffer)?;
+    }
+    Ok(())
+}
 
+fn draw_welcome(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
+    let render_size = editor.render_size();
+    for y in 0..render_size.rows {
+        if y == render_size.rows / 3 {
+            let welcome = format!(
+                "{} -- version {}",
+                env!("CARGO_PKG_DESCRIPTION"),
+                env!("CARGO_PKG_VERSION")
+            );
+            let mut width = term.screen_size.cols;
+            if welcome.len() < term.screen_size.cols {
+                write!(term, "~").context(TerminalOutput)?;
+                width = term.screen_size.cols - 1
+            }
+            write!(term, "{:^w$.p$}", welcome, w = width, p = width).context(TerminalOutput)?;
+        } else {
+            write!(term, "~").context(TerminalOutput)?;
+        }
+
+        // EL - Erase In Line
+        //  <esc> [ <param> K
+        // Params:
+        //  0 : erase from active position to the end of the line, inclusive (default)
+        //  1 : erase from the start of the screen to the active position, inclusive
+        //  2 : erase all of the line, inclusive
+        write!(term, "\x1b[K").context(TerminalOutput)?;
+        writeln!(term, "\r").context(TerminalOutput)?;
+    }
+    Ok(())
+}
+
+fn draw_rows(term: &mut RawTerminal, buffer: &mut TextBuffer) -> Result<()> {
     // update syntax before drawing
     let max_file_row = buffer.render_rect.size.rows + buffer.render_rect.origin.y;
     for y in 0..max_file_row {
@@ -117,24 +157,7 @@ fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     // rendering
     for y in 0..buffer.render_rect.size.rows {
         let file_row = y + buffer.render_rect.origin.y;
-        if file_row >= buffer.rows.len() {
-            if buffer.rows.is_empty() && y == buffer.render_rect.size.rows / 3 {
-                let welcome = format!(
-                    "{} -- version {}",
-                    env!("CARGO_PKG_DESCRIPTION"),
-                    env!("CARGO_PKG_VERSION")
-                );
-                let mut width = term.screen_size.cols;
-                if welcome.len() < term.screen_size.cols {
-                    write!(term, "~").context(TerminalOutput)?;
-                    width = term.screen_size.cols - 1
-                }
-                write!(term, "{:^w$.p$}", welcome, w = width, p = width).context(TerminalOutput)?;
-            } else {
-                write!(term, "~").context(TerminalOutput)?;
-            }
-        } else {
-            let row = &buffer.rows[file_row];
+        if let Some(row) = buffer.rows.get(file_row) {
             let (scr_s, scr_e) = (
                 buffer.render_rect.origin.x,
                 buffer.render_rect.origin.x + buffer.render_rect.size.cols,
@@ -184,6 +207,8 @@ fn draw_rows(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
             if current_color.is_some() {
                 write!(term, "\x1b[39;49m").context(TerminalOutput)?;
             }
+        } else {
+            write!(term, "~").context(TerminalOutput)?;
         }
 
         // EL - Erase In Line
@@ -269,7 +294,7 @@ pub(crate) fn refresh_screen(
 
     let r = editor.scroll();
 
-    draw_rows(term, editor)?;
+    draw_main(term, editor)?;
     draw_status_bar(term, editor)?;
     draw_message_bar(term, editor)?;
 

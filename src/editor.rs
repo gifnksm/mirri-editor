@@ -85,7 +85,12 @@ impl Editor {
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
-        self.buffer.set_render_size(render_size)
+        self.buffer.set_render_size(render_size);
+        self.render_size = render_size;
+    }
+
+    pub(crate) fn render_size(&self) -> Size {
+        self.render_size
     }
 
     pub(crate) fn scroll(&mut self) -> Point {
