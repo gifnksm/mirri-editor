@@ -165,17 +165,12 @@ impl TextBuffer {
                 .map(|row| output::get_render_width(&row.chars[..self.c.x]))
                 .unwrap_or(0);
             match scroll {
-                YScroll::Up(dy) => {
-                    if self.c.y < dy {
-                        self.c.y = 0;
-                    } else {
-                        self.c.y -= dy;
-                    }
-                }
+                YScroll::Up(dy) => self.c.y = self.c.y.saturating_sub(dy),
                 YScroll::Down(dy) => {
                     self.c.y += dy;
-                    if self.c.y >= self.rows.len() {
-                        self.c.y = self.rows.len();
+                    let max_y = self.rows.len().saturating_sub(1);
+                    if self.c.y >= max_y {
+                        self.c.y = max_y;
                     }
                 }
             }
