@@ -227,8 +227,8 @@ fn draw_rows(term: &mut RawTerminal, buffer: &mut TextBuffer) -> Result<()> {
 fn draw_status_bar(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
     let default_path = OsStr::new("[No Name]");
     let path = editor
-        .filename
-        .as_ref()
+        .buffer
+        .filename()
         .and_then(|p| p.file_name())
         .unwrap_or(default_path);
     let dirty_indicator = if editor.is_dirty() { "(modified)" } else { "" };

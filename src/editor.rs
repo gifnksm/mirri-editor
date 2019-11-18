@@ -29,7 +29,6 @@ pub(crate) struct Editor {
     render_size: Size,
 
     pub(crate) quit_times: usize,
-    pub(crate) filename: Option<PathBuf>,
     pub(crate) status_msg: Option<(Instant, String)>,
 }
 
@@ -39,7 +38,6 @@ impl Editor {
             buffer: TextBuffer::new(render_size),
             render_size,
             quit_times: QUIT_TIMES,
-            filename: None,
             status_msg: None,
         }
     }
