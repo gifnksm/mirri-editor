@@ -1,4 +1,8 @@
-use snafu::{Backtrace, ResultExt, Snafu};
+use nix::{
+    errno::Errno,
+    unistd::{self, AccessFlags},
+};
+use snafu::{Backtrace, IntoError, ResultExt, Snafu};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write as _},
@@ -19,10 +23,16 @@ pub(crate) enum Error {
         source: io::Error,
         backtrace: Backtrace,
     },
-    #[snafu(display("Could not write: {}", source))]
+    #[snafu(display("Could not write to file {}: {}", filename.display(), source))]
     Write {
         filename: PathBuf,
         source: io::Error,
+        backtrace: Backtrace,
+    },
+    #[snafu(display("Could not get metadata of file {}: {}", filename.display(), source))]
+    GetMetadata {
+        filename: PathBuf,
+        source: nix::Error,
         backtrace: Backtrace,
     },
 }
@@ -32,6 +42,22 @@ pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 pub(crate) fn exists(filename: impl AsRef<Path>) -> bool {
     let filename = filename.as_ref();
     filename.exists()
+}
+
+pub(crate) fn writable(filename: impl AsRef<Path>) -> Result<bool> {
+    let filename = filename.as_ref();
+    match unistd::access(filename, AccessFlags::W_OK) {
+        Ok(()) => Ok(true),
+        Err(e) => {
+            if let Some(Errno::EACCES) = e.as_errno() {
+                return Ok(false);
+            }
+            Err(GetMetadata {
+                filename: filename.to_path_buf(),
+            }
+            .into_error(e))
+        }
+    }
 }
 
 pub(crate) fn open(filename: impl AsRef<Path>) -> Result<Vec<String>> {

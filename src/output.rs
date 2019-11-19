@@ -125,13 +125,15 @@ fn draw_status_bar(term: &mut RawTerminal, status: &Status) -> Result<()> {
         .filename
         .and_then(|p| p.file_name())
         .unwrap_or(default_path);
-    let dirty_indicator = if status.is_dirty { "(modified)" } else { "" };
+    let dirty_indicator = if status.dirty { "(modified)" } else { "" };
+    let readonly_indicator = if status.readonly { "(readonly)" } else { "" };
 
     let l_status = format!(
-        "{:.20} - {} lines {}",
+        "{:.20} - {} lines {}{}",
         path.to_string_lossy(),
         status.lines,
-        dirty_indicator
+        dirty_indicator,
+        readonly_indicator,
     );
     let r_status = format!(
         "{} | {}/{}",

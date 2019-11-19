@@ -18,7 +18,8 @@ pub(crate) struct TextBuffer {
     syntax: &'static Syntax<'static>,
     c: Point,
     rows: Vec<Row>,
-    is_dirty: bool,
+    dirty: bool,
+    readonly: bool,
     empty_row: Row,
 
     render_rect: Rect,
@@ -38,7 +39,8 @@ impl TextBuffer {
             syntax,
             c: Point::default(),
             rows: vec![],
-            is_dirty: false,
+            dirty: false,
+            readonly: false,
             render_rect: Rect {
                 origin: Point::default(),
                 size: render_size,
@@ -51,24 +53,30 @@ impl TextBuffer {
         let filename = filename.into();
         let mut buf = Self::new(render_rect);
         if file::exists(&filename) {
+            buf.readonly = !file::writable(&filename)?;
             let lines = file::open(&filename)?;
             for line in lines {
                 buf.append_row(line);
             }
         }
+        buf.dirty = false;
         buf.set_filename(Some(filename));
-        buf.is_dirty = false;
         Ok(buf)
     }
 
-    pub(crate) fn is_dirty(&self) -> bool {
-        self.is_dirty
+    pub(crate) fn dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub(crate) fn readonly(&self) -> bool {
+        self.readonly
     }
 
     pub(crate) fn status(&self) -> Status {
         Status {
             filename: self.filename.as_ref().map(|p| p.as_ref()),
-            is_dirty: self.is_dirty,
+            dirty: self.dirty,
+            readonly: self.readonly,
             cursor: self.c,
             lines: self.rows.len(),
             syntax: self.syntax,
@@ -132,7 +140,7 @@ impl TextBuffer {
         let filename = self.filename.as_ref().unwrap();
         let lines = self.rows.iter().map(|row| row.chars());
         let bytes = file::save(&filename, lines)?;
-        self.is_dirty = false;
+        self.dirty = false;
         Ok(bytes)
     }
 
@@ -233,7 +241,7 @@ impl TextBuffer {
 
     fn insert_row(&mut self, at: usize, s: String) {
         self.rows.insert(at, Row::new(s));
-        self.is_dirty = true;
+        self.dirty = true;
     }
 
     fn append_row(&mut self, s: String) {
@@ -242,7 +250,7 @@ impl TextBuffer {
 
     fn delete_row(&mut self, at: usize) {
         self.rows.remove(at);
-        self.is_dirty = true;
+        self.dirty = true;
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) {
@@ -251,7 +259,7 @@ impl TextBuffer {
         }
         self.rows[self.c.y].insert_char(self.c.x, ch);
         self.move_cursor(CursorMove::Right);
-        self.is_dirty = true;
+        self.dirty = true;
     }
 
     pub(crate) fn insert_newline(&mut self) {
@@ -262,7 +270,7 @@ impl TextBuffer {
             self.append_row("".into());
         }
         self.move_cursor(CursorMove::Right);
-        self.is_dirty = true;
+        self.dirty = true;
     }
 
     pub(crate) fn delete_back_char(&mut self) {
@@ -276,11 +284,11 @@ impl TextBuffer {
         let next = right.first();
         if self.c.x < cur.chars().len() {
             cur.delete_char(self.c.x);
-            self.is_dirty = true;
+            self.dirty = true;
         } else if let Some(next) = next {
             cur.append_str(&next.chars());
             self.delete_row(self.c.y + 1);
-            self.is_dirty = true;
+            self.dirty = true;
         }
     }
 
@@ -298,7 +306,8 @@ impl TextBuffer {
 #[derive(Debug)]
 pub(crate) struct Status<'a> {
     pub(crate) filename: Option<&'a Path>,
-    pub(crate) is_dirty: bool,
+    pub(crate) dirty: bool,
+    pub(crate) readonly: bool,
     pub(crate) cursor: Point,
     pub(crate) lines: usize,
     pub(crate) syntax: &'a Syntax<'a>,

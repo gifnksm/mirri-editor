@@ -97,9 +97,9 @@ impl Editor {
         Ok(())
     }
 
-    pub(crate) fn is_dirty(&self) -> bool {
+    pub(crate) fn dirty(&self) -> bool {
         if let Some(buffer) = &self.buffer {
-            buffer.is_dirty()
+            buffer.dirty()
         } else {
             false
         }
@@ -111,7 +111,8 @@ impl Editor {
         } else {
             Status {
                 filename: None,
-                is_dirty: false,
+                dirty: false,
+                readonly: false,
                 cursor: Point::default(),
                 lines: 0,
                 syntax: Syntax::select(None::<String>),
@@ -175,20 +176,44 @@ impl Editor {
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) {
+        if let Some(buffer) = &self.buffer {
+            if buffer.readonly() {
+                self.set_status_message("Buffer is readonly");
+                return;
+            }
+        }
         self.buffer_or_create().insert_char(ch)
     }
 
     pub(crate) fn insert_newline(&mut self) {
+        if let Some(buffer) = &self.buffer {
+            if buffer.readonly() {
+                self.set_status_message("Buffer is readonly");
+                return;
+            }
+        }
         self.buffer_or_create().insert_newline()
     }
 
     pub(crate) fn delete_back_char(&mut self) {
+        if let Some(buffer) = &self.buffer {
+            if buffer.readonly() {
+                self.set_status_message("Buffer is readonly");
+                return;
+            }
+        }
         if let Some(buffer) = &mut self.buffer {
             buffer.delete_back_char();
         }
     }
 
     pub(crate) fn delete_char(&mut self) {
+        if let Some(buffer) = &self.buffer {
+            if buffer.readonly() {
+                self.set_status_message("Buffer is readonly");
+                return;
+            }
+        }
         if let Some(buffer) = &mut self.buffer {
             buffer.delete_char();
         }
