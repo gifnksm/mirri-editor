@@ -51,6 +51,7 @@ pub(crate) fn process_keypress(
                 Char('A') => editor.move_cursor(CursorMove::Home),
                 Char('E') => editor.move_cursor(CursorMove::End),
                 Char('V') => editor.move_cursor(CursorMove::PageDown),
+                Char('O') => editor.open_prompt(term, decoder)?,
                 Char('S') => editor.save(term, decoder)?,
                 Char('G') => find::find(term, decoder, editor)?,
                 Char('H') => editor.delete_back_char(),

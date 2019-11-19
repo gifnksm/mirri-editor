@@ -51,6 +51,20 @@ impl Editor {
         }
     }
 
+    pub(crate) fn open_prompt(
+        &mut self,
+        term: &mut RawTerminal,
+        decoder: &mut Decoder,
+    ) -> input::Result<()> {
+        if let Some(filename) = input::prompt(term, decoder, self, "Open file: {} (ESC to cancel)")?
+        {
+            self.open(filename);
+        } else {
+            self.set_status_message("Open aborted")
+        }
+        Ok(())
+    }
+
     pub(crate) fn save(
         &mut self,
         term: &mut RawTerminal,

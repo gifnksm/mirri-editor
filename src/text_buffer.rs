@@ -49,12 +49,14 @@ impl TextBuffer {
 
     pub(crate) fn from_file(filename: impl Into<PathBuf>, render_rect: Size) -> file::Result<Self> {
         let filename = filename.into();
-        let lines = file::open(&filename)?;
         let mut buf = Self::new(render_rect);
-        buf.set_filename(Some(filename));
-        for line in lines {
-            buf.append_row(line);
+        if file::exists(&filename) {
+            let lines = file::open(&filename)?;
+            for line in lines {
+                buf.append_row(line);
+            }
         }
+        buf.set_filename(Some(filename));
         buf.is_dirty = false;
         Ok(buf)
     }

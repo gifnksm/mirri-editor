@@ -29,6 +29,11 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub(crate) fn exists(filename: impl AsRef<Path>) -> bool {
+    let filename = filename.as_ref();
+    filename.exists()
+}
+
 pub(crate) fn open(filename: impl AsRef<Path>) -> Result<Vec<String>> {
     let filename = filename.as_ref();
     let file = File::open(filename).with_context(|| Open {
