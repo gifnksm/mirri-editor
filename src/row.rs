@@ -1,6 +1,10 @@
-use crate::syntax::{Highlight, Syntax, SyntaxState};
+use crate::{
+    geom::Segment,
+    syntax::{Highlight, Syntax, SyntaxState},
+};
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
+    ops::Range,
     str::CharIndices,
     usize,
 };
@@ -11,20 +15,26 @@ const TAB_STOP: usize = 8;
 #[derive(Debug, Clone)]
 pub(crate) struct Row {
     chars: String,
+    render_segment: Segment,
     syntax_state: SyntaxState,
 }
 
 impl Row {
-    pub(crate) fn new(mut s: String) -> Self {
+    pub(crate) fn new(mut s: String, render_segment: Segment) -> Self {
         s.truncate(s.trim_end_matches(&['\n', '\r'][..]).len());
         Row {
             chars: s,
             syntax_state: SyntaxState::new(),
+            render_segment,
         }
     }
 
     pub(crate) fn chars(&self) -> &str {
         &self.chars
+    }
+
+    pub(crate) fn set_render_size(&mut self, render_segment: Segment) {
+        self.render_segment = render_segment;
     }
 
     pub(crate) fn syntax_mut(&mut self) -> &mut SyntaxState {
@@ -49,22 +59,17 @@ impl Row {
         );
     }
 
-    pub(crate) fn render(&self, render_origin: usize, render_width: usize) -> Render {
+    pub(crate) fn render(&self) -> Render {
         Render {
             cur_col: 0,
-            render_origin,
-            render_width,
+            render_segment: self.render_segment,
             chars: self.chars.char_indices(),
         }
     }
 
-    pub(crate) fn render_with_highlight(
-        &self,
-        render_origin: usize,
-        render_width: usize,
-    ) -> RenderWithHighlight {
+    pub(crate) fn render_with_highlight(&self) -> RenderWithHighlight {
         RenderWithHighlight {
-            render: self.render(render_origin, render_width),
+            render: self.render(),
             row: self,
         }
     }
@@ -215,8 +220,7 @@ impl Display for RenderItem {
 #[derive(Debug)]
 pub(crate) struct Render<'a> {
     cur_col: usize,
-    render_origin: usize,
-    render_width: usize,
+    render_segment: Segment,
     chars: CharIndices<'a>,
 }
 
@@ -224,7 +228,10 @@ impl<'a> Iterator for Render<'a> {
     type Item = RenderItem;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (scr_s, scr_e) = (self.render_origin, self.render_origin + self.render_width);
+        let Range {
+            start: scr_s,
+            end: scr_e,
+        } = self.render_segment.range();
 
         while let Some((idx, ch)) = self.chars.next() {
             let col_s = self.cur_col;

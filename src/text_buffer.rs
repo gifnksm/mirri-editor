@@ -1,7 +1,7 @@
 use crate::{
     editor::CursorMove,
     file,
-    geom::{Point, Rect, Size},
+    geom::{Point, Rect, Segment, Size},
     row::{self, Row},
     syntax::{Highlight, Syntax},
     util::SliceExt,
@@ -21,15 +21,19 @@ pub(crate) struct TextBuffer {
     dirty: bool,
     readonly: bool,
     empty_row: Row,
-
     render_rect: Rect,
 }
 
 impl TextBuffer {
     pub(crate) fn new(render_size: Size) -> Self {
+        let render_rect = Rect {
+            origin: Point::default(),
+            size: render_size,
+        };
+
         let filename = None;
         let syntax = Syntax::select(filename.as_ref());
-        let mut empty_row = Row::new("~".into());
+        let mut empty_row = Row::new("~".into(), render_rect.x_segment());
         empty_row
             .syntax_mut()
             .set_overlay(0..1, Highlight::LineMarker);
@@ -85,19 +89,21 @@ impl TextBuffer {
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
         self.render_rect.size = render_size;
+
+        for row in &mut self.rows {
+            row.set_render_size(self.render_rect.x_segment())
+        }
+        self.empty_row.set_render_size(Segment {
+            origin: 0,
+            size: render_size.cols,
+        });
     }
 
     pub(crate) fn render_with_highlight(&self) -> impl Iterator<Item = row::RenderWithHighlight> {
-        let render_origin = self.render_rect.origin.x;
-        let render_width = self.render_rect.size.cols;
-
         self.rows[self.render_rect.origin.y..]
             .iter()
-            .map(move |row| row.render_with_highlight(render_origin, render_width))
-            .chain(
-                iter::repeat(&self.empty_row)
-                    .map(move |row| row.render_with_highlight(0, render_width)),
-            )
+            .map(move |row| row.render_with_highlight())
+            .chain(iter::repeat(&self.empty_row).map(move |row| row.render_with_highlight()))
             .take(self.render_rect.size.rows)
     }
 
@@ -240,7 +246,8 @@ impl TextBuffer {
     }
 
     fn insert_row(&mut self, at: usize, s: String) {
-        self.rows.insert(at, Row::new(s));
+        self.rows
+            .insert(at, Row::new(s, self.render_rect.x_segment()));
         self.dirty = true;
     }
 
