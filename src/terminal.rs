@@ -3,20 +3,21 @@ use crate::{
     geom::Size,
     signal::SignalReceiver,
 };
+use nix::sys::termios::{self, SetArg, Termios};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     io::{self, Read, Stdin, Stdout, Write},
     mem,
     os::unix::io::AsRawFd,
     panic, str,
+    sync::Mutex,
 };
-use termios::Termios;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
     #[snafu(display("Could not enter raw mode: {}", source))]
     EnterRawMode {
-        source: io::Error,
+        source: nix::Error,
         backtrace: Backtrace,
     },
     #[snafu(display("Could not initialize signal receiver: {:?}", source))]
@@ -51,30 +52,38 @@ pub(crate) struct RawTerminal {
 
 impl RawTerminal {
     pub(crate) fn new(decoder: &mut Decoder) -> Result<Self> {
-        use termios::*;
+        use termios::SpecialCharacterIndices::*;
 
         let stdin = io::stdin();
         let stdout = io::stdout();
 
         let fd = stdin.as_raw_fd();
-        let mut raw = Termios::from_fd(fd).context(EnterRawMode)?;
-        let orig_termios = raw;
+        let mut raw = termios::tcgetattr(fd).context(EnterRawMode)?;
+        let orig_termios = raw.clone();
 
         // Set raw mode flags
         termios::cfmakeraw(&mut raw);
         // Set control characters
-        raw.c_cc[VMIN] = 0; // minimum number of bytes of input needed before `read()`
-        raw.c_cc[VTIME] = 1; // maximum amount of time to wait before `read()` returns
+        raw.control_chars[VMIN as usize] = 0; // minimum number of bytes of input needed before `read()`
+        raw.control_chars[VTIME as usize] = 1; // maximum amount of time to wait before `read()` returns
 
-        tcsetattr(fd, TCSAFLUSH, &raw).context(EnterRawMode)?;
+        termios::tcsetattr(fd, SetArg::TCSAFLUSH, &raw).context(EnterRawMode)?;
 
-        let saved_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |info| {
-            if let Err(e) = tcsetattr(fd, TCSAFLUSH, &orig_termios) {
-                eprintln!("failed to reset terminal mode: {}", e);
-            }
-            saved_hook(info);
-        }));
+        {
+            let orig_termios = Mutex::new(orig_termios.clone());
+            let saved_hook = panic::take_hook();
+            panic::set_hook(Box::new(move |info| {
+                match orig_termios.try_lock() {
+                    Err(e) => eprintln!("failed to acquire lock: {}", e),
+                    Ok(orig_termios) => {
+                        if let Err(e) = termios::tcsetattr(fd, SetArg::TCSAFLUSH, &orig_termios) {
+                            eprintln!("failed to reset terminal mode: {}", e);
+                        }
+                    }
+                }
+                saved_hook(info);
+            }));
+        }
 
         let sigwinch_receiver = SignalReceiver::new_sigwinch().context(SignalReceiverInit)?;
 
@@ -152,9 +161,9 @@ impl RawTerminal {
 
 impl Drop for RawTerminal {
     fn drop(&mut self) {
-        use termios::*;
         let fd = self.stdin.as_raw_fd();
-        tcsetattr(fd, TCSAFLUSH, &self.orig_termios).expect("failed to restore terminal mode");
+        termios::tcsetattr(fd, SetArg::TCSAFLUSH, &self.orig_termios)
+            .expect("failed to restore terminal mode");
     }
 }
 
