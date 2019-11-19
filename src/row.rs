@@ -203,7 +203,7 @@ impl Display for RenderItem {
         match self.kind {
             Padding => write!(f, "{:w$}", "", w = self.width),
             Char(ch) => write!(f, "{}", ch),
-            AsciiControl(ch) => write!(f, "^{}", (ch as u8 + b'@')),
+            AsciiControl(ch) => write!(f, "^{}", (ch as u8 ^ 0x40) as char),
             UnicodeControl(ch) => {
                 let byte = ch as u32;
                 if byte <= 0xffff {
