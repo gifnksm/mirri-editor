@@ -2,7 +2,8 @@ use crate::{
     editor::CursorMove,
     file,
     geom::{Point, Rect, Segment, Size},
-    row::{self, Row},
+    render::RenderItem,
+    row::Row,
     syntax::{Highlight, Syntax},
     util::SliceExt,
 };
@@ -99,12 +100,16 @@ impl TextBuffer {
         });
     }
 
-    pub(crate) fn render_with_highlight(&self) -> impl Iterator<Item = row::RenderWithHighlight> {
+    #[allow(clippy::needless_lifetimes)] // false positive
+    pub(crate) fn render_with_highlight<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
         self.rows[self.render_rect.origin.y..]
             .iter()
-            .map(move |row| row.render_with_highlight())
-            .chain(iter::repeat(&self.empty_row).map(move |row| row.render_with_highlight()))
+            .map(|row| row.render_with_highlight())
+            .chain(iter::repeat(&self.empty_row).map(|row| row.render_with_highlight()))
             .take(self.render_rect.size.rows)
+            .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = (Highlight, RenderItem)>>)
     }
 
     pub(crate) fn scroll(&mut self) -> Point {

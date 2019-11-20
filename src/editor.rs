@@ -2,10 +2,13 @@ use crate::{
     decode::Decoder,
     geom::{Point, Size},
     input,
-    syntax::Syntax,
+    render::RenderItem,
+    syntax::Highlight,
     terminal::RawTerminal,
     text_buffer::{self, Status, TextBuffer},
+    welcome::Welcome,
 };
+use itertools::Either;
 use std::{path::PathBuf, time::Instant};
 
 pub(crate) const QUIT_TIMES: usize = 3;
@@ -26,9 +29,9 @@ pub(crate) enum CursorMove {
 
 #[derive(Debug)]
 pub(crate) struct Editor {
-    pub(crate) buffer: Option<TextBuffer>,
+    buffer: Option<TextBuffer>,
+    welcome: Welcome,
     render_size: Size,
-
     pub(crate) quit_times: usize,
     pub(crate) status_msg: Option<(Instant, String)>,
 }
@@ -37,6 +40,7 @@ impl Editor {
     pub(crate) fn new(render_size: Size) -> Self {
         Editor {
             buffer: None,
+            welcome: Welcome::new(render_size),
             render_size,
             quit_times: QUIT_TIMES,
             status_msg: None,
@@ -109,26 +113,27 @@ impl Editor {
         if let Some(buffer) = &self.buffer {
             buffer.status()
         } else {
-            Status {
-                filename: None,
-                dirty: false,
-                readonly: false,
-                cursor: Point::default(),
-                lines: 0,
-                syntax: Syntax::select(None::<String>),
-            }
+            self.welcome.status()
         }
-    }
-
-    pub(crate) fn render_size(&self) -> Size {
-        self.render_size
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
         if let Some(buffer) = &mut self.buffer {
             buffer.set_render_size(render_size);
         }
+        self.welcome.set_render_size(render_size);
         self.render_size = render_size;
+    }
+
+    #[allow(clippy::needless_lifetimes)] // false positive
+    pub(crate) fn render_with_highlight<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
+        if let Some(buffer) = &self.buffer {
+            Either::Left(buffer.render_with_highlight())
+        } else {
+            Either::Right(self.welcome.render_with_highlight())
+        }
     }
 
     pub(crate) fn scroll(&mut self) -> Point {

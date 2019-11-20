@@ -18,6 +18,4 @@ structopt = "0.3.4"
 unicode-width = "0.1.6"
 signal-hook = "0.1.11"
 nix = "0.15.0"
-
-[dev-dependencies]
 itertools = "0.8.1"

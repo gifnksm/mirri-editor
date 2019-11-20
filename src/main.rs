@@ -10,12 +10,14 @@ mod find;
 mod geom;
 mod input;
 mod output;
+mod render;
 mod row;
 mod signal;
 mod syntax;
 mod terminal;
 mod text_buffer;
 mod util;
+mod welcome;
 
 #[derive(Debug, Snafu)]
 enum Error {

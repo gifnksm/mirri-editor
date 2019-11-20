@@ -3,7 +3,7 @@ use crate::{
     editor::Editor,
     syntax::Highlight,
     terminal::{self, RawTerminal},
-    text_buffer::{Status, TextBuffer},
+    text_buffer::Status,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
@@ -46,47 +46,7 @@ pub(crate) fn clear_screen(term: &mut RawTerminal) -> Result<()> {
 }
 
 fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
-    if let Some(buffer) = &editor.buffer {
-        draw_rows(term, buffer)?;
-    } else {
-        draw_welcome(term, editor)?;
-    }
-    Ok(())
-}
-
-fn draw_welcome(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
-    let render_size = editor.render_size();
-    for y in 0..render_size.rows {
-        if y == render_size.rows / 3 {
-            let welcome = format!(
-                "{} -- version {}",
-                env!("CARGO_PKG_DESCRIPTION"),
-                env!("CARGO_PKG_VERSION")
-            );
-            let mut width = term.screen_size.cols;
-            if welcome.len() < term.screen_size.cols {
-                write!(term, "~").context(TerminalOutput)?;
-                width = term.screen_size.cols - 1
-            }
-            write!(term, "{:^w$.p$}", welcome, w = width, p = width).context(TerminalOutput)?;
-        } else {
-            write!(term, "~").context(TerminalOutput)?;
-        }
-
-        // EL - Erase In Line
-        //  <esc> [ <param> K
-        // Params:
-        //  0 : erase from active position to the end of the line, inclusive (default)
-        //  1 : erase from the start of the screen to the active position, inclusive
-        //  2 : erase all of the line, inclusive
-        write!(term, "\x1b[K").context(TerminalOutput)?;
-        writeln!(term, "\r").context(TerminalOutput)?;
-    }
-    Ok(())
-}
-
-fn draw_rows(term: &mut RawTerminal, buffer: &TextBuffer) -> Result<()> {
-    for row_render in buffer.render_with_highlight() {
+    for row_render in editor.render_with_highlight() {
         let mut current_color = None;
         for (hl, item) in row_render {
             if hl == Highlight::Normal {
