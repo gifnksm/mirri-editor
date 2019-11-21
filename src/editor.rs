@@ -10,7 +10,7 @@ use crate::{
     welcome::Welcome,
 };
 use itertools::Either;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) const QUIT_TIMES: usize = 3;
 
@@ -136,6 +136,34 @@ impl Editor {
                 self.buffer_idx -= 1;
             }
         }
+    }
+
+    pub(crate) fn close_buffer(
+        &mut self,
+        term: &mut RawTerminal,
+        decoder: &mut Decoder,
+    ) -> input::Result<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+        if self.buffer().unwrap().dirty() {
+            let prompt = format!(
+                "Buffer {} modified; kill anyway? (yes or no) {{}}",
+                self.buffer()
+                    .unwrap()
+                    .filename()
+                    .unwrap_or_else(|| Path::new("[no name]"))
+                    .display()
+            );
+            if !input::prompt_confirm(term, decoder, self, &prompt)? {
+                return Ok(());
+            }
+        }
+        self.buffer.remove(self.buffer_idx);
+        if !self.buffer.is_empty() {
+            self.buffer_idx %= self.buffer.len();
+        }
+        Ok(())
     }
 
     pub(crate) fn dirty(&self) -> bool {

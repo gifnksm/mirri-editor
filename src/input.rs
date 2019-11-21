@@ -56,6 +56,7 @@ pub(crate) fn process_keypress(
                 Char('G') => find::find(term, decoder, editor)?,
                 Char('H') => editor.delete_back_char(),
                 Char('X') => editor.next_buffer(),
+                Char('C') => editor.close_buffer(term, decoder)?,
                 _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {
@@ -101,6 +102,19 @@ pub(crate) enum PromptCommand {
     SearchForward,
     Execute,
     Cancel,
+}
+
+pub(crate) fn prompt_confirm(
+    term: &mut RawTerminal,
+    decoder: &mut Decoder,
+    editor: &mut Editor,
+    prompt: &str,
+) -> Result<bool> {
+    if let Some(s) = self::prompt(term, decoder, editor, prompt)? {
+        Ok(s.to_lowercase().starts_with('y'))
+    } else {
+        Ok(false)
+    }
 }
 
 pub(crate) fn prompt(
