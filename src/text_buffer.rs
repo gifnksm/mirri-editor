@@ -34,7 +34,7 @@ impl TextBuffer {
 
         let filename = None;
         let syntax = Syntax::select(filename.as_ref());
-        let mut empty_row = Row::new("~".into(), render_rect.x_segment());
+        let mut empty_row = Row::new("~".into());
         empty_row
             .syntax_mut()
             .set_overlay(0..1, Highlight::LineMarker);
@@ -46,10 +46,7 @@ impl TextBuffer {
             rows: vec![],
             dirty: false,
             readonly: false,
-            render_rect: Rect {
-                origin: Point::default(),
-                size: render_size,
-            },
+            render_rect,
             empty_row,
         }
     }
@@ -90,24 +87,24 @@ impl TextBuffer {
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
         self.render_rect.size = render_size;
-
-        for row in &mut self.rows {
-            row.set_render_size(self.render_rect.x_segment())
-        }
-        self.empty_row.set_render_size(Segment {
-            origin: 0,
-            size: render_size.cols,
-        });
     }
 
     #[allow(clippy::needless_lifetimes)] // false positive
     pub(crate) fn render_with_highlight<'a>(
         &'a self,
     ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
+        let row_render_segment = self.render_rect.x_segment();
+        let empty_render_segment = Segment {
+            origin: 0,
+            size: self.render_rect.size.cols,
+        };
         self.rows[self.render_rect.origin.y..]
             .iter()
-            .map(|row| row.render_with_highlight())
-            .chain(iter::repeat(&self.empty_row).map(|row| row.render_with_highlight()))
+            .map(move |row| row.render_with_highlight(row_render_segment))
+            .chain(
+                iter::repeat(&self.empty_row)
+                    .map(move |row| row.render_with_highlight(empty_render_segment)),
+            )
             .take(self.render_rect.size.rows)
             .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = (Highlight, RenderItem)>>)
     }
@@ -251,8 +248,7 @@ impl TextBuffer {
     }
 
     fn insert_row(&mut self, at: usize, s: String) {
-        self.rows
-            .insert(at, Row::new(s, self.render_rect.x_segment()));
+        self.rows.insert(at, Row::new(s));
         self.dirty = true;
     }
 

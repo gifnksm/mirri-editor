@@ -172,7 +172,7 @@ impl Editor {
                 term,
                 decoder,
                 self,
-                "Modified buffers exist; exit anyway? {}",
+                "Modified buffers exist; exit anyway? (yes or no) {}",
             )?
         {
             return Ok(false);

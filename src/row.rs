@@ -8,26 +8,20 @@ use std::usize;
 #[derive(Debug, Clone)]
 pub(crate) struct Row {
     chars: String,
-    render_segment: Segment,
     syntax_state: SyntaxState,
 }
 
 impl Row {
-    pub(crate) fn new(mut s: String, render_segment: Segment) -> Self {
+    pub(crate) fn new(mut s: String) -> Self {
         s.truncate(s.trim_end_matches(&['\n', '\r'][..]).len());
         Row {
             chars: s,
             syntax_state: SyntaxState::new(),
-            render_segment,
         }
     }
 
     pub(crate) fn chars(&self) -> &str {
         &self.chars
-    }
-
-    pub(crate) fn set_render_size(&mut self, render_segment: Segment) {
-        self.render_segment = render_segment;
     }
 
     pub(crate) fn syntax_mut(&mut self) -> &mut SyntaxState {
@@ -52,13 +46,13 @@ impl Row {
         );
     }
 
-    pub(crate) fn render(&self) -> RenderIndicesWithin {
-        self.chars.render_indices_within(0, self.render_segment)
+    pub(crate) fn render(&self, render_segment: Segment) -> RenderIndicesWithin {
+        self.chars.render_indices_within(0, render_segment)
     }
 
-    pub(crate) fn render_with_highlight(&self) -> RenderWithHighlight {
+    pub(crate) fn render_with_highlight(&self, render_segment: Segment) -> RenderWithHighlight {
         RenderWithHighlight {
-            render: self.render(),
+            render: self.render(render_segment),
             row: self,
         }
     }
