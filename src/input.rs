@@ -1,6 +1,6 @@
 use crate::{
     decode::{self, Decoder, Input, Key},
-    editor::{self, CursorMove, Editor},
+    editor::{CursorMove, Editor},
     find, output,
     terminal::RawTerminal,
 };
@@ -34,15 +34,9 @@ pub(crate) fn process_keypress(
                 Char('I') => editor.insert_char('\t'),  // Ctrl-I : \t
                 Char('?') => editor.delete_back_char(), // Ctrl-? : Backspace
                 Char('Q') => {
-                    if editor.dirty() && editor.quit_times > 0 {
-                        editor.set_status_message(format!(
-                            "WARNING!!! File has changed. Press Ctrl-Q {} more times to quit.",
-                            editor.quit_times
-                        ));
-                        editor.quit_times -= 1;
-                        return Ok(false);
+                    if editor.quit(term, decoder)? {
+                        return Ok(true);
                     }
-                    return Ok(true);
                 }
                 Char('P') => editor.move_cursor(CursorMove::Up),
                 Char('N') => editor.move_cursor(CursorMove::Down),
@@ -88,8 +82,6 @@ pub(crate) fn process_keypress(
             },
             _ => editor.set_status_message(format!("{} is undefined", input)),
         }
-
-        editor.quit_times = editor::QUIT_TIMES;
     }
 
     Ok(false)

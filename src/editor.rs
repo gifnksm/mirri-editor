@@ -12,8 +12,6 @@ use crate::{
 use itertools::Either;
 use std::path::{Path, PathBuf};
 
-pub(crate) const QUIT_TIMES: usize = 3;
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum CursorMove {
     Up,
@@ -35,7 +33,6 @@ pub(crate) struct Editor {
     welcome: Welcome,
     render_size: Size,
     status_message: StatusMessage,
-    pub(crate) quit_times: usize,
 }
 
 impl Editor {
@@ -46,7 +43,6 @@ impl Editor {
             welcome: Welcome::new(render_size),
             render_size,
             status_message: StatusMessage::new(),
-            quit_times: QUIT_TIMES,
         }
     }
 
@@ -164,6 +160,24 @@ impl Editor {
             self.buffer_idx %= self.buffer.len();
         }
         Ok(())
+    }
+
+    pub(crate) fn quit(
+        &mut self,
+        term: &mut RawTerminal,
+        decoder: &mut Decoder,
+    ) -> input::Result<bool> {
+        if self.dirty()
+            && !input::prompt_confirm(
+                term,
+                decoder,
+                self,
+                "Modified buffers exist; exit anyway? {}",
+            )?
+        {
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     pub(crate) fn dirty(&self) -> bool {
