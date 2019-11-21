@@ -3,13 +3,14 @@ use crate::{
     geom::{Point, Size},
     input,
     render::RenderItem,
+    status_message::StatusMessage,
     syntax::Highlight,
     terminal::RawTerminal,
     text_buffer::{self, Status, TextBuffer},
     welcome::Welcome,
 };
 use itertools::Either;
-use std::{path::PathBuf, time::Instant};
+use std::path::PathBuf;
 
 pub(crate) const QUIT_TIMES: usize = 3;
 
@@ -33,8 +34,8 @@ pub(crate) struct Editor {
     buffer_idx: usize,
     welcome: Welcome,
     render_size: Size,
+    status_message: StatusMessage,
     pub(crate) quit_times: usize,
-    pub(crate) status_msg: Option<(Instant, String)>,
 }
 
 impl Editor {
@@ -44,8 +45,8 @@ impl Editor {
             buffer_idx: 0,
             welcome: Welcome::new(render_size),
             render_size,
+            status_message: StatusMessage::new(),
             quit_times: QUIT_TIMES,
-            status_msg: None,
         }
     }
 
@@ -183,20 +184,15 @@ impl Editor {
     }
 
     pub(crate) fn status_message(&self) -> Option<&str> {
-        self.status_msg.as_ref().map(|s| s.1.as_str())
+        self.status_message.message()
     }
 
     pub(crate) fn set_status_message(&mut self, s: impl Into<String>) {
-        let now = Instant::now();
-        self.status_msg = Some((now, s.into()));
+        self.status_message.set_message(s)
     }
 
     pub(crate) fn update_status_message(&mut self) {
-        if let Some((time, _msg)) = &mut self.status_msg {
-            if time.elapsed().as_secs() >= 5 {
-                self.status_msg = None;
-            }
-        }
+        self.status_message.update()
     }
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {

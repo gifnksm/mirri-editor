@@ -13,6 +13,7 @@ mod output;
 mod render;
 mod row;
 mod signal;
+mod status_message;
 mod syntax;
 mod terminal;
 mod text_buffer;
