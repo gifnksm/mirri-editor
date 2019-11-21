@@ -23,10 +23,10 @@ pub(crate) struct TextBuffer {
 }
 
 impl TextBuffer {
-    pub(crate) fn new() -> Self {
+    fn new_empty() -> Self {
         let filename = None;
         let syntax = Syntax::select(filename.as_ref());
-        let mut empty_row = Row::new("~".into());
+        let mut empty_row = Row::new("~");
         empty_row
             .syntax_mut()
             .set_overlay(0..1, Highlight::LineMarker);
@@ -41,15 +41,23 @@ impl TextBuffer {
         }
     }
 
+    pub(crate) fn new() -> Self {
+        let mut buf = Self::new_empty();
+        buf.append_row("");
+        buf
+    }
+
     pub(crate) fn from_file(filename: impl Into<PathBuf>) -> file::Result<Self> {
         let filename = filename.into();
-        let mut buf = Self::new();
+        let mut buf = Self::new_empty();
         if file::exists(&filename) {
             buf.readonly = !file::writable(&filename)?;
             let lines = file::open(&filename)?;
             for line in lines {
                 buf.append_row(line);
             }
+        } else {
+            buf.append_row("");
         }
         buf.dirty = false;
         buf.set_filename(Some(filename));
@@ -139,8 +147,8 @@ impl TextBuffer {
         self.dirty = true;
     }
 
-    fn append_row(&mut self, s: String) {
-        self.insert_row(self.rows.len(), s);
+    fn append_row(&mut self, s: impl Into<String>) {
+        self.insert_row(self.rows.len(), s.into());
     }
 
     fn delete_row(&mut self, at: usize) {
@@ -149,20 +157,13 @@ impl TextBuffer {
     }
 
     pub(crate) fn insert_char(&mut self, c: Point, ch: char) {
-        if self.rows.is_empty() {
-            self.append_row("".into());
-        }
         self.rows[c.y].insert_char(c.x, ch);
         self.dirty = true;
     }
 
     pub(crate) fn insert_newline(&mut self, c: Point) {
-        if let Some(row) = self.rows.get_mut(c.y) {
-            let rest = row.split(c.x);
-            self.insert_row(c.y + 1, rest);
-        } else {
-            self.append_row("".into());
-        }
+        let rest = self.rows[c.y].split(c.x);
+        self.insert_row(c.y + 1, rest);
         self.dirty = true;
     }
 

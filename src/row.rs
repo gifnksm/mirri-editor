@@ -12,10 +12,11 @@ pub(crate) struct Row {
 }
 
 impl Row {
-    pub(crate) fn new(mut s: String) -> Self {
-        s.truncate(s.trim_end_matches(&['\n', '\r'][..]).len());
+    pub(crate) fn new(chars: impl Into<String>) -> Self {
+        let mut chars = chars.into();
+        chars.truncate(chars.trim_end_matches(&['\n', '\r'][..]).len());
         Row {
-            chars: s,
+            chars,
             syntax_state: SyntaxState::new(),
         }
     }

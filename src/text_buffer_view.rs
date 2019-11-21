@@ -81,7 +81,7 @@ impl TextBufferView {
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
         use CursorMove::*;
-        let row = self.buffer.rows().get(self.c.y);
+        let row = &self.buffer.rows()[self.c.y];
         enum YScroll {
             Up(usize),
             Down(usize),
@@ -89,7 +89,7 @@ impl TextBufferView {
         let mut y_scroll = None;
         match mv {
             Left => {
-                if let Some(ch) = row.and_then(|row| row.chars()[..self.c.x].chars().next_back()) {
+                if let Some(ch) = row.chars()[..self.c.x].chars().next_back() {
                     self.c.x -= ch.len_utf8();
                 } else if self.c.y > 0 {
                     self.c.y -= 1;
@@ -97,26 +97,20 @@ impl TextBufferView {
                 }
             }
             Right => {
-                if let Some(row) = row {
-                    if let Some(ch) = row.chars()[self.c.x..].chars().next() {
-                        self.c.x += ch.len_utf8();
-                    } else {
-                        self.c.y += 1;
-                        self.c.x = 0;
-                    }
+                if let Some(ch) = row.chars()[self.c.x..].chars().next() {
+                    self.c.x += ch.len_utf8();
+                } else if self.c.y < self.buffer.rows().len() - 1 {
+                    self.c.y += 1;
+                    self.c.x = 0;
                 }
             }
             Home => self.c.x = 0,
-            End => {
-                if let Some(row) = row {
-                    self.c.x = row.chars().len();
-                }
-            }
+            End => self.c.x = row.chars().len(),
             Up => y_scroll = Some(YScroll::Up(1)),
             Down => y_scroll = Some(YScroll::Down(1)),
             PageUp => {
                 y_scroll = Some(YScroll::Up(
-                    (self.c.y - self.render_rect.origin.y) + self.render_rect.size.rows,
+                    self.c.y + self.render_rect.size.rows - self.render_rect.origin.y,
                 ))
             }
             PageDown => {
@@ -130,37 +124,25 @@ impl TextBufferView {
                 self.c.y = 0;
             }
             BufferEnd => {
-                if let Some(row) = self.buffer.rows().last() {
-                    self.c.x = row.chars().len();
-                    self.c.y = self.buffer.rows().len() - 1;
-                }
+                self.c.y = self.buffer.rows().len() - 1;
+                self.c.x = self.buffer.rows()[self.c.y].chars().len();
             }
         }
 
         if let Some(scroll) = y_scroll {
             // Adjust cursor x position to the nearest char boundary in rendered texts
-            let rx = self
-                .buffer
-                .rows()
-                .get(self.c.y)
-                .map(|row| row.get_rx_from_cx(self.c.x))
-                .unwrap_or(0);
+            let rx = self.buffer.rows()[self.c.y].get_rx_from_cx(self.c.x);
             match scroll {
                 YScroll::Up(dy) => self.c.y = self.c.y.saturating_sub(dy),
                 YScroll::Down(dy) => {
                     self.c.y += dy;
-                    let max_y = self.buffer.rows().len().saturating_sub(1);
+                    let max_y = self.buffer.rows().len() - 1;
                     if self.c.y >= max_y {
                         self.c.y = max_y;
                     }
                 }
             }
-            self.c.x = self
-                .buffer
-                .rows()
-                .get(self.c.y)
-                .map(|row| row.get_cx_from_rx(rx))
-                .unwrap_or(0);
+            self.c.x = self.buffer.rows()[self.c.y].get_cx_from_rx(rx);
         }
     }
 
