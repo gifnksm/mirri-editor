@@ -55,6 +55,7 @@ pub(crate) fn process_keypress(
                 Char('S') => editor.save(term, decoder)?,
                 Char('G') => find::find(term, decoder, editor)?,
                 Char('H') => editor.delete_back_char(),
+                Char('X') => editor.next_buffer(),
                 _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {
@@ -65,6 +66,7 @@ pub(crate) fn process_keypress(
                 Char('v') => editor.move_cursor(CursorMove::PageUp),
                 Char('<') => editor.move_cursor(CursorMove::BufferHome),
                 Char('>') => editor.move_cursor(CursorMove::BufferEnd),
+                Char('X') => editor.prev_buffer(),
                 _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {
