@@ -6,7 +6,8 @@ use crate::{
     status_message::StatusMessage,
     syntax::Highlight,
     terminal::RawTerminal,
-    text_buffer::{self, Status, TextBuffer},
+    text_buffer::{Status, TextBuffer},
+    text_buffer_view::{self, TextBufferView},
     welcome::Welcome,
 };
 use itertools::Either;
@@ -28,7 +29,7 @@ pub(crate) enum CursorMove {
 
 #[derive(Debug)]
 pub(crate) struct Editor {
-    buffer: Vec<TextBuffer>,
+    buffer_view: Vec<TextBufferView>,
     buffer_idx: usize,
     welcome: Welcome,
     render_size: Size,
@@ -38,7 +39,7 @@ pub(crate) struct Editor {
 impl Editor {
     pub(crate) fn new(render_size: Size) -> Self {
         Editor {
-            buffer: vec![],
+            buffer_view: vec![],
             buffer_idx: 0,
             welcome: Welcome::new(render_size),
             render_size,
@@ -48,10 +49,11 @@ impl Editor {
 
     pub(crate) fn open(&mut self, filename: impl Into<PathBuf>) {
         let filename = filename.into();
-        match TextBuffer::from_file(filename, self.render_size) {
+        match TextBuffer::from_file(filename) {
             Ok(buffer) => {
-                self.buffer_idx = self.buffer.len();
-                self.buffer.push(buffer)
+                self.buffer_idx = self.buffer_view.len();
+                self.buffer_view
+                    .push(TextBufferView::new(buffer, self.render_size))
             }
             Err(e) => self.set_status_message(format!("{}", e)),
         }
@@ -103,31 +105,40 @@ impl Editor {
         Ok(())
     }
 
+    fn buffer_view(&self) -> Option<&TextBufferView> {
+        self.buffer_view.get(self.buffer_idx)
+    }
+
+    fn buffer_view_mut(&mut self) -> Option<&mut TextBufferView> {
+        self.buffer_view.get_mut(self.buffer_idx)
+    }
+
+    fn buffer_view_or_create(&mut self) -> &mut TextBufferView {
+        if self.buffer_view.is_empty() {
+            self.buffer_view
+                .push(TextBufferView::new(TextBuffer::new(), self.render_size));
+        }
+        &mut self.buffer_view[self.buffer_idx]
+    }
+
     fn buffer(&self) -> Option<&TextBuffer> {
-        self.buffer.get(self.buffer_idx)
+        self.buffer_view().map(|bv| bv.buffer())
     }
 
     fn buffer_mut(&mut self) -> Option<&mut TextBuffer> {
-        self.buffer.get_mut(self.buffer_idx)
-    }
-
-    fn buffer_or_create(&mut self) -> &mut TextBuffer {
-        if self.buffer.is_empty() {
-            self.buffer.push(TextBuffer::new(self.render_size));
-        }
-        &mut self.buffer[self.buffer_idx]
+        self.buffer_view_mut().map(|bv| bv.buffer_mut())
     }
 
     pub(crate) fn next_buffer(&mut self) {
-        if !self.buffer.is_empty() {
-            self.buffer_idx = (self.buffer_idx + 1) % self.buffer.len();
+        if !self.buffer_view.is_empty() {
+            self.buffer_idx = (self.buffer_idx + 1) % self.buffer_view.len();
         }
     }
 
     pub(crate) fn prev_buffer(&mut self) {
-        if !self.buffer.is_empty() {
+        if !self.buffer_view.is_empty() {
             if self.buffer_idx == 0 {
-                self.buffer_idx = self.buffer.len() - 1;
+                self.buffer_idx = self.buffer_view.len() - 1;
             } else {
                 self.buffer_idx -= 1;
             }
@@ -139,7 +150,7 @@ impl Editor {
         term: &mut RawTerminal,
         decoder: &mut Decoder,
     ) -> input::Result<()> {
-        if self.buffer.is_empty() {
+        if self.buffer_view.is_empty() {
             return Ok(());
         }
         if self.buffer().unwrap().dirty() {
@@ -155,9 +166,9 @@ impl Editor {
                 return Ok(());
             }
         }
-        self.buffer.remove(self.buffer_idx);
-        if !self.buffer.is_empty() {
-            self.buffer_idx %= self.buffer.len();
+        self.buffer_view.remove(self.buffer_idx);
+        if !self.buffer_view.is_empty() {
+            self.buffer_idx %= self.buffer_view.len();
         }
         Ok(())
     }
@@ -181,20 +192,20 @@ impl Editor {
     }
 
     pub(crate) fn dirty(&self) -> bool {
-        self.buffer.iter().any(|b| b.dirty())
+        self.buffer_view.iter().any(|b| b.buffer().dirty())
     }
 
     pub(crate) fn status(&self) -> Status {
-        if let Some(buffer) = self.buffer() {
-            buffer.status()
+        if let Some(buffer_view) = self.buffer_view() {
+            buffer_view.status()
         } else {
             self.welcome.status()
         }
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
-        if let Some(buffer) = self.buffer_mut() {
-            buffer.set_render_size(render_size);
+        if let Some(buffer_view) = self.buffer_view_mut() {
+            buffer_view.set_render_size(render_size);
         }
         self.welcome.set_render_size(render_size);
         self.render_size = render_size;
@@ -204,23 +215,23 @@ impl Editor {
     pub(crate) fn render_with_highlight<'a>(
         &'a self,
     ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
-        if let Some(buffer) = self.buffer() {
-            Either::Left(buffer.render_with_highlight())
+        if let Some(buffer_view) = self.buffer_view() {
+            Either::Left(buffer_view.render_with_highlight())
         } else {
             Either::Right(self.welcome.render_with_highlight())
         }
     }
 
     pub(crate) fn scroll(&mut self) -> Point {
-        if let Some(buffer) = self.buffer_mut() {
-            buffer.scroll()
+        if let Some(buffer_view) = self.buffer_view_mut() {
+            buffer_view.scroll()
         } else {
             Point::default()
         }
     }
 
     pub(crate) fn update_highlight(&mut self) {
-        if let Some(buffer) = self.buffer_mut() {
+        if let Some(buffer) = self.buffer_view_mut() {
             buffer.update_highlight();
         }
     }
@@ -238,8 +249,8 @@ impl Editor {
     }
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
-        if let Some(buffer) = self.buffer_mut() {
-            buffer.move_cursor(mv)
+        if let Some(buffer_view) = self.buffer_view_mut() {
+            buffer_view.move_cursor(mv)
         }
     }
 
@@ -250,7 +261,7 @@ impl Editor {
                 return;
             }
         }
-        self.buffer_or_create().insert_char(ch)
+        self.buffer_view_or_create().insert_char(ch)
     }
 
     pub(crate) fn insert_newline(&mut self) {
@@ -260,7 +271,7 @@ impl Editor {
                 return;
             }
         }
-        self.buffer_or_create().insert_newline()
+        self.buffer_view_or_create().insert_newline()
     }
 
     pub(crate) fn delete_back_char(&mut self) {
@@ -270,8 +281,8 @@ impl Editor {
                 return;
             }
         }
-        if let Some(buffer) = self.buffer.get_mut(self.buffer_idx) {
-            buffer.delete_back_char();
+        if let Some(buffer_view) = self.buffer_view_mut() {
+            buffer_view.delete_back_char();
         }
     }
 
@@ -282,48 +293,48 @@ impl Editor {
                 return;
             }
         }
-        if let Some(buffer) = self.buffer.get_mut(self.buffer_idx) {
-            buffer.delete_char();
+        if let Some(buffer_view) = self.buffer_view_mut() {
+            buffer_view.delete_char();
         }
     }
 
     pub(crate) fn find_start(&mut self) -> Option<Find> {
-        let buffer = self.buffer_mut()?;
+        let buffer_view = self.buffer_view_mut()?;
         Some(Find {
-            inner: buffer.find_start(),
+            inner: buffer_view.find_start(),
         })
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct Find {
-    inner: text_buffer::Find,
+    inner: text_buffer_view::Find,
 }
 
 impl Find {
     pub(crate) fn execute(&mut self, editor: &mut Editor, query: &str) {
-        if let Some(buffer) = editor.buffer_mut() {
-            self.inner.execute(buffer, query)
+        if let Some(buffer_view) = editor.buffer_view_mut() {
+            self.inner.execute(buffer_view, query)
         }
     }
     pub(crate) fn cancel(&mut self, editor: &mut Editor, query: &str) {
-        if let Some(buffer) = editor.buffer_mut() {
-            self.inner.cancel(buffer, query)
+        if let Some(buffer_view) = editor.buffer_view_mut() {
+            self.inner.cancel(buffer_view, query)
         }
     }
     pub(crate) fn input(&mut self, editor: &mut Editor, query: &str) {
-        if let Some(buffer) = editor.buffer_mut() {
-            self.inner.input(buffer, query)
+        if let Some(buffer_view) = editor.buffer_view_mut() {
+            self.inner.input(buffer_view, query)
         }
     }
     pub(crate) fn search_forward(&mut self, editor: &mut Editor, query: &str) {
-        if let Some(buffer) = editor.buffer_mut() {
-            self.inner.search_forward(buffer, query)
+        if let Some(buffer_view) = editor.buffer_view_mut() {
+            self.inner.search_forward(buffer_view, query)
         }
     }
     pub(crate) fn search_backward(&mut self, editor: &mut Editor, query: &str) {
-        if let Some(buffer) = editor.buffer_mut() {
-            self.inner.search_backward(buffer, query)
+        if let Some(buffer_view) = editor.buffer_view_mut() {
+            self.inner.search_backward(buffer_view, query)
         }
     }
 }

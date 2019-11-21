@@ -17,6 +17,7 @@ mod status_message;
 mod syntax;
 mod terminal;
 mod text_buffer;
+mod text_buffer_view;
 mod util;
 mod welcome;
 
