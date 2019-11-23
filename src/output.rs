@@ -3,13 +3,13 @@ use crate::{
     editor::Editor,
     syntax::Highlight,
     terminal::{self, RawTerminal},
-    text_buffer::Status,
+    text_buffer_view::Status,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     cmp,
-    ffi::OsStr,
     io::{self, Write},
+    path::Path,
 };
 
 #[derive(Debug, Snafu)]
@@ -46,9 +46,9 @@ pub(crate) fn clear_screen(term: &mut RawTerminal) -> Result<()> {
 }
 
 fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
-    for row_render in editor.render_with_highlight() {
+    for (segment, row) in editor.render_rows() {
         let mut current_color = None;
-        for (hl, item) in row_render {
+        for (hl, item) in row.render_with_highlight(segment) {
             if hl == Highlight::Normal {
                 if current_color.is_some() {
                     current_color = None;
@@ -79,28 +79,34 @@ fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
     Ok(())
 }
 
-fn draw_status_bar(term: &mut RawTerminal, status: &Status) -> Result<()> {
-    let default_path = OsStr::new("[No Name]");
-    let path = status
-        .filename
-        .and_then(|p| p.file_name())
-        .unwrap_or(default_path);
-    let dirty_indicator = if status.dirty { "(modified)" } else { "" };
-    let readonly_indicator = if status.readonly { "(readonly)" } else { "" };
-
-    let l_status = format!(
-        "{:.20} - {} lines {}{}",
-        path.to_string_lossy(),
-        status.lines,
-        dirty_indicator,
-        readonly_indicator,
-    );
-    let r_status = format!(
-        "{} | {}/{}",
-        status.syntax.filetype,
-        status.cursor.y + 1,
-        status.lines
-    );
+fn draw_status_bar(term: &mut RawTerminal, status: Option<Status>) -> Result<()> {
+    let l_status;
+    let r_status;
+    if let Some(status) = status {
+        let path = status
+            .filename
+            .and_then(|p| ref_filter_map::ref_filter_map(p, Path::file_name));
+        let dirty_indicator = if status.dirty { "(modified)" } else { "" };
+        let readonly_indicator = if status.readonly { "(readonly)" } else { "" };
+        l_status = format!(
+            "{:.20} - {} lines {}{}",
+            path.as_ref()
+                .map(|p| p.to_string_lossy())
+                .unwrap_or_else(|| "[No Name]".into()),
+            status.lines,
+            dirty_indicator,
+            readonly_indicator,
+        );
+        r_status = format!(
+            "{} | {}/{}",
+            status.syntax.filetype,
+            status.cursor.y + 1,
+            status.lines
+        );
+    } else {
+        l_status = "*welcome*".to_string();
+        r_status = "".to_string();
+    }
 
     let l_width = cmp::min(l_status.len(), term.screen_size.cols);
     let r_width = cmp::min(r_status.len(), term.screen_size.cols - l_width);
@@ -151,7 +157,7 @@ pub(crate) fn refresh_screen(
     editor.update_highlight();
 
     draw_main(term, editor)?;
-    draw_status_bar(term, &editor.status())?;
+    draw_status_bar(term, editor.status())?;
     draw_message_bar(term, editor.status_message())?;
 
     write!(term, "\x1b[{};{}H", r.y + 1, r.x + 1).context(TerminalOutput)?; // move cursor

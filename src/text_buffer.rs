@@ -1,13 +1,11 @@
 use crate::{
     file,
-    geom::{Point, Rect, Segment},
-    render::RenderItem,
+    geom::{Point, Rect},
     row::Row,
     syntax::{Highlight, Syntax},
     util::SliceExt,
 };
 use std::{
-    iter,
     path::{Path, PathBuf},
     usize,
 };
@@ -72,6 +70,14 @@ impl TextBuffer {
         self.readonly
     }
 
+    pub(crate) fn lines(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub(crate) fn syntax(&self) -> &'static Syntax<'static> {
+        self.syntax
+    }
+
     pub(crate) fn rows(&self) -> &[Row] {
         &self.rows
     }
@@ -80,36 +86,8 @@ impl TextBuffer {
         &mut self.rows
     }
 
-    pub(crate) fn status(&self, c: Point) -> Status {
-        Status {
-            filename: self.filename.as_ref().map(|p| p.as_ref()),
-            dirty: self.dirty,
-            readonly: self.readonly,
-            cursor: c,
-            lines: self.rows.len(),
-            syntax: self.syntax,
-        }
-    }
-
-    #[allow(clippy::needless_lifetimes)] // false positive
-    pub(crate) fn render_with_highlight<'a>(
-        &'a self,
-        render_rect: Rect,
-    ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
-        let row_render_segment = render_rect.x_segment();
-        let empty_render_segment = Segment {
-            origin: 0,
-            size: render_rect.size.cols,
-        };
-        self.rows[render_rect.origin.y..]
-            .iter()
-            .map(move |row| row.render_with_highlight(row_render_segment))
-            .chain(
-                iter::repeat(&self.empty_row)
-                    .map(move |row| row.render_with_highlight(empty_render_segment)),
-            )
-            .take(render_rect.size.rows)
-            .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = (Highlight, RenderItem)>>)
+    pub(crate) fn row_at(&self, at: usize) -> &Row {
+        self.rows.get(at).unwrap_or(&self.empty_row)
     }
 
     pub(crate) fn update_highlight(&mut self, render_rect: Rect) {
@@ -180,14 +158,4 @@ impl TextBuffer {
             self.dirty = true;
         }
     }
-}
-
-#[derive(Debug)]
-pub(crate) struct Status<'a> {
-    pub(crate) filename: Option<&'a Path>,
-    pub(crate) dirty: bool,
-    pub(crate) readonly: bool,
-    pub(crate) cursor: Point,
-    pub(crate) lines: usize,
-    pub(crate) syntax: &'a Syntax<'a>,
 }

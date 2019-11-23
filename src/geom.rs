@@ -25,6 +25,12 @@ impl Rect {
             size: self.size.cols,
         }
     }
+    pub(crate) fn y_segment(self) -> Segment {
+        Segment {
+            origin: self.origin.y,
+            size: self.size.rows,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Default)]

@@ -1,77 +1,78 @@
 use crate::{
-    geom::{Point, Segment, Size},
-    render::{RenderItem, RenderStrExt},
-    syntax::{Highlight, Syntax},
-    text_buffer::Status,
+    geom::{Point, Rect, Segment, Size},
+    row::Row,
+    syntax::Syntax,
 };
-use itertools::Either;
-use std::{iter, path::Path};
+use std::{
+    cell::{Ref, RefCell},
+    ops::Range,
+};
 
 #[derive(Debug)]
 pub(crate) struct Welcome {
-    render_size: Size,
-    message: String,
+    render_rect: Rect,
+    message_row: RefCell<Row>,
+    empty_row: RefCell<Row>,
 }
 
 impl Welcome {
     pub(crate) fn new(render_size: Size) -> Self {
-        Self {
-            render_size,
-            message: format!(
-                "{} -- version {}",
-                env!("CARGO_PKG_DESCRIPTION"),
-                env!("CARGO_PKG_VERSION")
-            ),
-        }
-    }
+        let render_rect = Rect {
+            origin: Point::default(),
+            size: render_size,
+        };
+        let message = format!(
+            "{} -- version {}",
+            env!("CARGO_PKG_DESCRIPTION"),
+            env!("CARGO_PKG_VERSION")
+        );
 
-    pub(crate) fn status(&self) -> Status {
-        Status {
-            filename: Some(Path::new("*Welcome*")),
-            dirty: false,
-            readonly: false,
-            cursor: Point::default(),
-            lines: 0,
-            syntax: Syntax::select(None::<String>),
-        }
+        let mut message_row = Row::new(message);
+        let mut empty_row = Row::new("~");
+        let syntax = Syntax::select(None::<&str>);
+        message_row.update_highlight(syntax, None, None);
+        empty_row.update_highlight(syntax, None, None);
+
+        let mut welcome = Self {
+            render_rect,
+            message_row: RefCell::new(message_row),
+            empty_row: RefCell::new(empty_row),
+        };
+        welcome.set_render_size(render_size);
+        welcome
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
-        self.render_size = render_size;
+        self.render_rect.size = render_size;
     }
 
-    #[allow(clippy::needless_lifetimes)] // false positive
-    pub(crate) fn render_with_highlight<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
-        let render_segment = Segment {
-            origin: 0,
-            size: self.render_size.cols,
-        };
-        let pre_rows = (self.render_size.rows - 1) / 3;
-        let post_rows = self.render_size.rows - pre_rows - 1;
+    pub(crate) fn render_rows(&self) -> RenderRows {
+        RenderRows {
+            welcome: self,
+            idx: self.render_rect.y_segment().range(),
+            message_idx: (self.render_rect.size.rows - 1) / 3,
+            render_rect: self.render_rect,
+        }
+    }
+}
 
-        let tilde_width = "~".render_width(0);
-        let message_width = self.message.render_width(tilde_width);
-        let message = if tilde_width + message_width >= self.render_size.cols {
-            Either::Left(self.message.render_within(0, render_segment))
+pub(crate) struct RenderRows<'a> {
+    welcome: &'a Welcome,
+    idx: Range<usize>,
+    message_idx: usize,
+    render_rect: Rect,
+}
+
+impl<'a> Iterator for RenderRows<'a> {
+    type Item = (Segment, Ref<'a, Row>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let idx = self.idx.next()?;
+        let segment = self.render_rect.x_segment();
+        if idx == self.message_idx {
+            Some((segment, self.welcome.message_row.borrow()))
         } else {
-            let padding_size = ((self.render_size.cols - message_width) / 2).saturating_sub(1);
-            let tilde = "~".render_within(0, render_segment);
-            let padding = iter::once(RenderItem::padding(padding_size));
-            let message = self.message.render_within(1, render_segment);
-            Either::Right(tilde.chain(padding).chain(message))
-        };
-
-        let message_row = iter::repeat(Highlight::Normal).zip(message);
-        let empty_row = iter::repeat(Highlight::Normal).zip("~".render_within(0, render_segment));
-
-        let pre = iter::repeat(Either::Left(empty_row.clone())).take(pre_rows);
-        let message = iter::once(Either::Right(message_row));
-        let post = iter::repeat(Either::Left(empty_row)).take(post_rows);
-
-        pre.chain(message)
-            .chain(post)
-            .map(|iter| Box::new(iter) as Box<dyn Iterator<Item = (Highlight, RenderItem)>>)
+            Some((segment, self.welcome.empty_row.borrow()))
+        }
     }
 }

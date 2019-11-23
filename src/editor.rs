@@ -3,16 +3,15 @@ use crate::{
     frame::Frame,
     geom::{Point, Size},
     input,
-    render::RenderItem,
     status_message::StatusMessage,
-    syntax::Highlight,
     terminal::RawTerminal,
-    text_buffer::{Status, TextBuffer},
-    text_buffer_view::{self, TextBufferView},
-    welcome::Welcome,
+    text_buffer::TextBuffer,
+    text_buffer_view::{self, Status, TextBufferView},
+    welcome::{self, Welcome},
 };
 use itertools::Either;
 use std::{
+    cell::{Ref, RefMut},
     collections::VecDeque,
     path::{Path, PathBuf},
 };
@@ -100,7 +99,8 @@ impl Editor {
             }
         }
 
-        match self.buffer_mut().unwrap().save() {
+        let res = self.buffer_mut().unwrap().save();
+        match res {
             Ok(bytes) => {
                 self.set_status_message(format!("{} bytes written to disk", bytes));
             }
@@ -124,11 +124,11 @@ impl Editor {
         self.frame.buffer_view_or_create()
     }
 
-    fn buffer(&self) -> Option<&TextBuffer> {
+    fn buffer(&self) -> Option<Ref<TextBuffer>> {
         self.buffer_view().map(|bv| bv.buffer())
     }
 
-    fn buffer_mut(&mut self) -> Option<&mut TextBuffer> {
+    fn buffer_mut(&mut self) -> Option<RefMut<TextBuffer>> {
         self.buffer_view_mut().map(|bv| bv.buffer_mut())
     }
 
@@ -153,18 +153,17 @@ impl Editor {
         term: &mut RawTerminal,
         decoder: &mut Decoder,
     ) -> input::Result<()> {
-        if let Some(buffer) = self.buffer() {
-            if buffer.dirty() {
-                let prompt = format!(
-                    "Buffer {} modified; kill anyway? (yes or no) {{}}",
-                    buffer
-                        .filename()
-                        .unwrap_or_else(|| Path::new("[no name]"))
-                        .display()
-                );
-                if !input::prompt_confirm(term, decoder, self, &prompt)? {
-                    return Ok(());
-                }
+        if self.buffer().map(|b| b.dirty()).unwrap_or(false) {
+            let prompt = format!(
+                "Buffer {} modified; kill anyway? (yes or no) {{}}",
+                self.buffer()
+                    .unwrap()
+                    .filename()
+                    .unwrap_or_else(|| Path::new("[no name]"))
+                    .display()
+            );
+            if !input::prompt_confirm(term, decoder, self, &prompt)? {
+                return Ok(());
             }
         }
         self.frame.close();
@@ -194,12 +193,9 @@ impl Editor {
         self.buffer_view.iter().any(|b| b.buffer().dirty())
     }
 
-    pub(crate) fn status(&self) -> Status {
-        if let Some(buffer_view) = self.buffer_view() {
-            buffer_view.status()
-        } else {
-            self.welcome.status()
-        }
+    pub(crate) fn status(&self) -> Option<Status> {
+        let bv = self.buffer_view()?;
+        Some(bv.status())
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
@@ -208,14 +204,11 @@ impl Editor {
         self.render_size = render_size;
     }
 
-    #[allow(clippy::needless_lifetimes)] // false positive
-    pub(crate) fn render_with_highlight<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = Box<dyn Iterator<Item = (Highlight, RenderItem)> + 'a>> {
-        if let Some(buffer_view) = self.buffer_view() {
-            Either::Left(buffer_view.render_with_highlight())
+    pub(crate) fn render_rows(&self) -> Either<text_buffer_view::RenderRows, welcome::RenderRows> {
+        if let Some(bv) = self.buffer_view() {
+            Either::Left(bv.render_rows())
         } else {
-            Either::Right(self.welcome.render_with_highlight())
+            Either::Right(self.welcome.render_rows())
         }
     }
 
@@ -245,32 +238,30 @@ impl Editor {
         }
     }
 
+    fn is_editable(&self) -> bool {
+        self.buffer().map(|b| !b.readonly()).unwrap_or(true)
+    }
+
     pub(crate) fn insert_char(&mut self, ch: char) {
-        if let Some(buffer) = self.buffer() {
-            if buffer.readonly() {
-                self.set_status_message("Buffer is readonly");
-                return;
-            }
+        if !self.is_editable() {
+            self.set_status_message("Buffer is readonly");
+            return;
         }
         self.buffer_view_or_create().insert_char(ch)
     }
 
     pub(crate) fn insert_newline(&mut self) {
-        if let Some(buffer) = self.buffer() {
-            if buffer.readonly() {
-                self.set_status_message("Buffer is readonly");
-                return;
-            }
+        if !self.is_editable() {
+            self.set_status_message("Buffer is readonly");
+            return;
         }
         self.buffer_view_or_create().insert_newline()
     }
 
     pub(crate) fn delete_back_char(&mut self) {
-        if let Some(buffer) = self.buffer() {
-            if buffer.readonly() {
-                self.set_status_message("Buffer is readonly");
-                return;
-            }
+        if !self.is_editable() {
+            self.set_status_message("Buffer is readonly");
+            return;
         }
         if let Some(buffer_view) = self.buffer_view_mut() {
             buffer_view.delete_back_char();
@@ -278,11 +269,9 @@ impl Editor {
     }
 
     pub(crate) fn delete_char(&mut self) {
-        if let Some(buffer) = self.buffer() {
-            if buffer.readonly() {
-                self.set_status_message("Buffer is readonly");
-                return;
-            }
+        if !self.is_editable() {
+            self.set_status_message("Buffer is readonly");
+            return;
         }
         if let Some(buffer_view) = self.buffer_view_mut() {
             buffer_view.delete_char();
