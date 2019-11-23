@@ -1,5 +1,6 @@
 use crate::{
     decode::Decoder,
+    frame::Frame,
     geom::{Point, Size},
     input,
     render::RenderItem,
@@ -11,7 +12,10 @@ use crate::{
     welcome::Welcome,
 };
 use itertools::Either;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum CursorMove {
@@ -29,8 +33,8 @@ pub(crate) enum CursorMove {
 
 #[derive(Debug)]
 pub(crate) struct Editor {
-    buffer_view: Vec<TextBufferView>,
-    buffer_idx: usize,
+    frame: Frame,
+    buffer_view: VecDeque<TextBufferView>,
     welcome: Welcome,
     render_size: Size,
     status_message: StatusMessage,
@@ -39,8 +43,8 @@ pub(crate) struct Editor {
 impl Editor {
     pub(crate) fn new(render_size: Size) -> Self {
         Editor {
-            buffer_view: vec![],
-            buffer_idx: 0,
+            frame: Frame::new(render_size),
+            buffer_view: VecDeque::new(),
             welcome: Welcome::new(render_size),
             render_size,
             status_message: StatusMessage::new(),
@@ -51,9 +55,12 @@ impl Editor {
         let filename = filename.into();
         match TextBuffer::from_file(filename) {
             Ok(buffer) => {
-                self.buffer_idx = self.buffer_view.len();
-                self.buffer_view
-                    .push(TextBufferView::new(buffer, self.render_size))
+                if let Some(bv) = self
+                    .frame
+                    .set_buffer_view(TextBufferView::new(buffer, self.render_size))
+                {
+                    self.buffer_view.push_back(bv);
+                }
             }
             Err(e) => self.set_status_message(format!("{}", e)),
         }
@@ -106,19 +113,15 @@ impl Editor {
     }
 
     fn buffer_view(&self) -> Option<&TextBufferView> {
-        self.buffer_view.get(self.buffer_idx)
+        self.frame.buffer_view()
     }
 
     fn buffer_view_mut(&mut self) -> Option<&mut TextBufferView> {
-        self.buffer_view.get_mut(self.buffer_idx)
+        self.frame.buffer_view_mut()
     }
 
     fn buffer_view_or_create(&mut self) -> &mut TextBufferView {
-        if self.buffer_view.is_empty() {
-            self.buffer_view
-                .push(TextBufferView::new(TextBuffer::new(), self.render_size));
-        }
-        &mut self.buffer_view[self.buffer_idx]
+        self.frame.buffer_view_or_create()
     }
 
     fn buffer(&self) -> Option<&TextBuffer> {
@@ -130,17 +133,17 @@ impl Editor {
     }
 
     pub(crate) fn next_buffer(&mut self) {
-        if !self.buffer_view.is_empty() {
-            self.buffer_idx = (self.buffer_idx + 1) % self.buffer_view.len();
+        if let Some(bv) = self.buffer_view.pop_front() {
+            if let Some(bv) = self.frame.set_buffer_view(bv) {
+                self.buffer_view.push_back(bv);
+            }
         }
     }
 
     pub(crate) fn prev_buffer(&mut self) {
-        if !self.buffer_view.is_empty() {
-            if self.buffer_idx == 0 {
-                self.buffer_idx = self.buffer_view.len() - 1;
-            } else {
-                self.buffer_idx -= 1;
+        if let Some(bv) = self.buffer_view.pop_back() {
+            if let Some(bv) = self.frame.set_buffer_view(bv) {
+                self.buffer_view.push_front(bv);
             }
         }
     }
@@ -150,26 +153,22 @@ impl Editor {
         term: &mut RawTerminal,
         decoder: &mut Decoder,
     ) -> input::Result<()> {
-        if self.buffer_view.is_empty() {
-            return Ok(());
-        }
-        if self.buffer().unwrap().dirty() {
-            let prompt = format!(
-                "Buffer {} modified; kill anyway? (yes or no) {{}}",
-                self.buffer()
-                    .unwrap()
-                    .filename()
-                    .unwrap_or_else(|| Path::new("[no name]"))
-                    .display()
-            );
-            if !input::prompt_confirm(term, decoder, self, &prompt)? {
-                return Ok(());
+        if let Some(buffer) = self.buffer() {
+            if buffer.dirty() {
+                let prompt = format!(
+                    "Buffer {} modified; kill anyway? (yes or no) {{}}",
+                    buffer
+                        .filename()
+                        .unwrap_or_else(|| Path::new("[no name]"))
+                        .display()
+                );
+                if !input::prompt_confirm(term, decoder, self, &prompt)? {
+                    return Ok(());
+                }
             }
         }
-        self.buffer_view.remove(self.buffer_idx);
-        if !self.buffer_view.is_empty() {
-            self.buffer_idx %= self.buffer_view.len();
-        }
+        self.frame.close();
+        self.next_buffer();
         Ok(())
     }
 
@@ -204,9 +203,7 @@ impl Editor {
     }
 
     pub(crate) fn set_render_size(&mut self, render_size: Size) {
-        if let Some(buffer_view) = self.buffer_view_mut() {
-            buffer_view.set_render_size(render_size);
-        }
+        self.frame.set_render_size(render_size);
         self.welcome.set_render_size(render_size);
         self.render_size = render_size;
     }
@@ -223,17 +220,11 @@ impl Editor {
     }
 
     pub(crate) fn scroll(&mut self) -> Point {
-        if let Some(buffer_view) = self.buffer_view_mut() {
-            buffer_view.scroll()
-        } else {
-            Point::default()
-        }
+        self.frame.scroll()
     }
 
     pub(crate) fn update_highlight(&mut self) {
-        if let Some(buffer) = self.buffer_view_mut() {
-            buffer.update_highlight();
-        }
+        self.frame.update_highlight()
     }
 
     pub(crate) fn status_message(&self) -> Option<&str> {

@@ -7,6 +7,7 @@ mod decode;
 mod editor;
 mod file;
 mod find;
+mod frame;
 mod geom;
 mod input;
 mod output;
