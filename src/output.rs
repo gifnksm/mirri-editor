@@ -46,26 +46,29 @@ pub(crate) fn clear_screen(term: &mut RawTerminal) -> Result<()> {
 }
 
 fn draw_main(term: &mut RawTerminal, editor: &Editor) -> Result<()> {
-    for (segment, row) in editor.render_rows() {
-        let mut current_color = None;
-        for (hl, item) in row.render_with_highlight(segment) {
-            if hl == Highlight::Normal {
-                if current_color.is_some() {
-                    current_color = None;
-                    write!(term, "\x1b[39;49m").context(TerminalOutput)?;
+    for segments in editor.render_rows() {
+        for (segment, row) in segments {
+            let mut current_color = None;
+            for (hl, item) in row.render_with_highlight(segment) {
+                if hl == Highlight::Normal {
+                    if current_color.is_some() {
+                        current_color = None;
+                        write!(term, "\x1b[39;49m").context(TerminalOutput)?;
+                    }
+                } else {
+                    let color = hl.to_color();
+                    if current_color != Some(color) {
+                        current_color = Some(color);
+                        write!(term, "\x1b[{};{}m", color.0, color.1).context(TerminalOutput)?;
+                    }
                 }
-            } else {
-                let color = hl.to_color();
-                if current_color != Some(color) {
-                    current_color = Some(color);
-                    write!(term, "\x1b[{};{}m", color.0, color.1).context(TerminalOutput)?;
-                }
+                write!(term, "{}", item).context(TerminalOutput)?;
             }
-            write!(term, "{}", item).context(TerminalOutput)?;
+            if current_color.is_some() {
+                write!(term, "\x1b[39;49m").context(TerminalOutput)?;
+            }
         }
-        if current_color.is_some() {
-            write!(term, "\x1b[39;49m").context(TerminalOutput)?;
-        }
+
         // EL - Erase In Line
         //  <esc> [ <param> K
         // Params:

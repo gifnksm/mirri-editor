@@ -1,6 +1,6 @@
 use crate::{
     decode::Decoder,
-    frame::Frame,
+    frame::{self, Frame},
     geom::{Point, Size},
     input,
     status_message::StatusMessage,
@@ -204,9 +204,9 @@ impl Editor {
         self.render_size = render_size;
     }
 
-    pub(crate) fn render_rows(&self) -> Either<text_buffer_view::RenderRows, welcome::RenderRows> {
-        if let Some(bv) = self.buffer_view() {
-            Either::Left(bv.render_rows())
+    pub(crate) fn render_rows(&self) -> Either<frame::RenderRows, welcome::RenderRows> {
+        if self.buffer_view().is_some() {
+            Either::Left(self.frame.render_rows())
         } else {
             Either::Right(self.welcome.render_rows())
         }

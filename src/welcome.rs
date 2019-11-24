@@ -64,15 +64,15 @@ pub(crate) struct RenderRows<'a> {
 }
 
 impl<'a> Iterator for RenderRows<'a> {
-    type Item = (Segment, Ref<'a, Row>);
+    type Item = Vec<(Segment, Ref<'a, Row>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let idx = self.idx.next()?;
         let segment = self.render_rect.x_segment();
         if idx == self.message_idx {
-            Some((segment, self.welcome.message_row.borrow()))
+            Some(vec![(segment, self.welcome.message_row.borrow())])
         } else {
-            Some((segment, self.welcome.empty_row.borrow()))
+            Some(vec![(segment, self.welcome.empty_row.borrow())])
         }
     }
 }

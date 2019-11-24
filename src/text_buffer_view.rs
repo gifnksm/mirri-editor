@@ -7,7 +7,6 @@ use crate::{
 };
 use std::{
     cell::{Ref, RefCell, RefMut},
-    ops::Range,
     path::Path,
     rc::Rc,
 };
@@ -36,6 +35,11 @@ impl TextBufferView {
         self.render_rect.size = render_size;
     }
 
+    pub(crate) fn render_row_at(&self, at: usize) -> (Segment, Ref<Row>) {
+        let row = Ref::map(self.buffer.borrow(), |b| b.row_at(at));
+        (self.render_rect.x_segment(), row)
+    }
+
     pub(crate) fn update_highlight(&mut self) {
         self.buffer.borrow_mut().update_highlight(self.render_rect)
     }
@@ -57,14 +61,6 @@ impl TextBufferView {
             cursor: self.c,
             lines: buffer.lines(),
             syntax: Ref::map(buffer, |b| b.syntax()),
-        }
-    }
-
-    pub(crate) fn render_rows(&self) -> RenderRows {
-        RenderRows {
-            buffer_view: self,
-            idx: self.render_rect.y_segment().range(),
-            render_rect: self.render_rect,
         }
     }
 
@@ -288,20 +284,4 @@ pub(crate) struct Status<'a> {
     pub(crate) cursor: Point,
     pub(crate) lines: usize,
     pub(crate) syntax: Ref<'a, Syntax<'a>>,
-}
-
-pub(crate) struct RenderRows<'a> {
-    buffer_view: &'a TextBufferView,
-    idx: Range<usize>,
-    render_rect: Rect,
-}
-
-impl<'a> Iterator for RenderRows<'a> {
-    type Item = (Segment, Ref<'a, Row>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let idx = self.idx.next()?;
-        let row = Ref::map(self.buffer_view.buffer.borrow(), |b| b.row_at(idx));
-        Some((self.render_rect.x_segment(), row))
-    }
 }
