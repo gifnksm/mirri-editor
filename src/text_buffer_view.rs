@@ -36,7 +36,9 @@ impl TextBufferView {
     }
 
     pub(crate) fn render_row_at(&self, at: usize) -> (Segment, Ref<Row>) {
-        let row = Ref::map(self.buffer.borrow(), |b| b.row_at(at));
+        let row = Ref::map(self.buffer.borrow(), |b| {
+            b.row_at(self.render_rect.origin.y + at)
+        });
         (self.render_rect.x_segment(), row)
     }
 

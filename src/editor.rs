@@ -234,7 +234,7 @@ impl Editor {
 
     pub(crate) fn move_cursor(&mut self, mv: CursorMove) {
         if let Some(buffer_view) = self.buffer_view_mut() {
-            buffer_view.move_cursor(mv)
+            buffer_view.move_cursor(mv);
         }
     }
 
