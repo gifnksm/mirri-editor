@@ -1,7 +1,9 @@
 use crate::{
     decode::{self, Decoder, Input, Key},
     editor::{CursorMove, Editor},
-    find, output,
+    find,
+    frame::SplitOrientation,
+    output,
     terminal::RawTerminal,
 };
 use snafu::{ResultExt, Snafu};
@@ -62,6 +64,7 @@ pub(crate) fn process_keypress(
                 Char('<') => editor.move_cursor(CursorMove::BufferHome),
                 Char('>') => editor.move_cursor(CursorMove::BufferEnd),
                 Char('X') => editor.prev_buffer(),
+                Char('2') => editor.split_frame(SplitOrientation::Vertical),
                 _ => editor.set_status_message(format!("{} is undefined", input)),
             },
             Input {

@@ -1,6 +1,6 @@
 use crate::{
     decode::Decoder,
-    frame::{self, Frame},
+    frame::{self, Frame, SplitOrientation},
     geom::{Point, Size},
     input,
     status_message::StatusMessage,
@@ -283,6 +283,10 @@ impl Editor {
         Some(Find {
             inner: buffer_view.find_start(),
         })
+    }
+
+    pub(crate) fn split_frame(&mut self, orientation: SplitOrientation) {
+        self.frame.split(orientation)
     }
 }
 

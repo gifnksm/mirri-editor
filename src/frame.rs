@@ -195,6 +195,51 @@ impl Frame {
         }
     }
 
+    pub(crate) fn split(&mut self, orientation: SplitOrientation) {
+        match self {
+            Self::Empty { render_size } => {
+                let render_size = *render_size;
+                let (size1, size2) = split_size(render_size, orientation);
+                let frame1 = Frame::new(size1);
+                let frame2 = Frame::new(size2);
+                *self = Self::Split {
+                    frames: vec![frame1, frame2],
+                    focus_idx: 0,
+                    orientation,
+                    render_size,
+                };
+            }
+            Self::Leaf {
+                buffer_view,
+                render_size,
+            } => {
+                let render_size = *render_size;
+                let (size1, size2) = split_size(render_size, orientation);
+                let mut bv1 = buffer_view.clone();
+                let mut bv2 = buffer_view.clone();
+                bv1.set_render_size(size1);
+                bv2.set_render_size(size2);
+                let frame1 = Frame::Leaf {
+                    buffer_view: bv1,
+                    render_size: size1,
+                };
+                let frame2 = Frame::Leaf {
+                    buffer_view: bv2,
+                    render_size: size2,
+                };
+                *self = Self::Split {
+                    frames: vec![frame1, frame2],
+                    focus_idx: 0,
+                    orientation,
+                    render_size,
+                };
+            }
+            Self::Split {
+                frames, focus_idx, ..
+            } => frames[*focus_idx].split(orientation),
+        }
+    }
+
     fn push_render_rows_at<'a>(&'a self, ry: usize, rows: &mut Vec<(Segment, Ref<'a, Row>)>) {
         match self {
             Self::Empty { .. } => {}
@@ -230,5 +275,17 @@ impl<'a> Iterator for RenderRows<'a> {
         let mut rows = vec![];
         self.frame.push_render_rows_at(ry, &mut rows);
         Some(rows)
+    }
+}
+
+fn split_size(render_size: Size, orientation: SplitOrientation) -> (Size, Size) {
+    match orientation {
+        SplitOrientation::Vertical => {
+            let mut top_size = render_size;
+            let mut bottom_size = render_size;
+            bottom_size.rows /= 2;
+            top_size.rows = render_size.rows - bottom_size.rows;
+            (top_size, bottom_size)
+        }
     }
 }
