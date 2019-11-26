@@ -21,7 +21,7 @@ pub(crate) enum Frame {
         render_size: Size,
     },
     Split {
-        frames: Vec<Frame>,
+        frames: [Box<Frame>; 2],
         focus_idx: usize,
         orientation: SplitOrientation,
         render_size: Size,
@@ -211,7 +211,7 @@ impl Frame {
                 let frame1 = Frame::new(size1);
                 let frame2 = Frame::new(size2);
                 *self = Self::Split {
-                    frames: vec![frame1, frame2],
+                    frames: [Box::new(frame1), Box::new(frame2)],
                     focus_idx: 0,
                     orientation,
                     render_size,
@@ -236,7 +236,7 @@ impl Frame {
                     render_size: size2,
                 };
                 *self = Self::Split {
-                    frames: vec![frame1, frame2],
+                    frames: [Box::new(frame1), Box::new(frame2)],
                     focus_idx: 0,
                     orientation,
                     render_size,
