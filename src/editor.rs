@@ -190,7 +190,7 @@ impl Editor {
     }
 
     pub(crate) fn dirty(&self) -> bool {
-        self.buffer_view.iter().any(|b| b.buffer().dirty())
+        self.frame.dirty() || self.buffer_view.iter().any(|b| b.buffer().dirty())
     }
 
     pub(crate) fn status(&self) -> Option<Status> {

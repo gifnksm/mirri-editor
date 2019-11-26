@@ -33,6 +33,14 @@ impl Frame {
         Frame::Empty { render_size }
     }
 
+    pub(crate) fn dirty(&self) -> bool {
+        match self {
+            Self::Empty { .. } => false,
+            Self::Leaf { buffer_view, .. } => buffer_view.buffer().dirty(),
+            Self::Split { frames, .. } => frames.iter().any(|f| f.dirty()),
+        }
+    }
+
     pub(crate) fn set_buffer_view(
         &mut self,
         mut buffer_view: TextBufferView,
