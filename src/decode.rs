@@ -158,10 +158,7 @@ impl Decoder {
         }
 
         let s = str::from_utf8(&bytes).context(NonUtf8Input)?;
-        let mut cs = s.chars();
-        let ch = cs.next();
-        debug_assert!(ch.is_none() || cs.next().is_none());
-        Ok(ch)
+        Ok(s.chars().next())
     }
 
     fn set_unread_char(&mut self, ch: char) {
