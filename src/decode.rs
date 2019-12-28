@@ -1,3 +1,4 @@
+use matches::matches;
 use smallvec::SmallVec;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
@@ -43,15 +44,15 @@ impl Display for Key {
         use Key::*;
         match self {
             Char(ch) => f.write_char(*ch),
-            ArrowLeft => f.write_str("<left>"),
-            ArrowRight => f.write_str("<right>"),
-            ArrowUp => f.write_str("<up>"),
-            ArrowDown => f.write_str("<down>"),
-            Delete => f.write_str("<delete>"),
-            Home => f.write_str("<home>"),
-            End => f.write_str("<end>"),
-            PageUp => f.write_str("<page up>"),
-            PageDown => f.write_str("<page down>"),
+            ArrowLeft => f.write_str("left"),
+            ArrowRight => f.write_str("right"),
+            ArrowUp => f.write_str("up"),
+            ArrowDown => f.write_str("down"),
+            Delete => f.write_str("delete"),
+            Home => f.write_str("home"),
+            End => f.write_str("end"),
+            PageUp => f.write_str("page up"),
+            PageDown => f.write_str("page down"),
         }
     }
 }
@@ -65,28 +66,21 @@ pub(crate) struct Input {
 
 impl Display for Input {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Input {
-                key,
-                ctrl: true,
-                alt: true,
-            } => write!(f, "C-M-{}", key),
-            Input {
-                key,
-                ctrl: true,
-                alt: false,
-            } => write!(f, "C-{}", key),
-            Input {
-                key,
-                ctrl: false,
-                alt: true,
-            } => write!(f, "M-{}", key),
-            Input {
-                key,
-                ctrl: false,
-                alt: false,
-            } => write!(f, "{}", key),
+        let need_escape = !matches!(self.key, Key::Char(_));
+        if need_escape {
+            write!(f, "<")?;
         }
+        if self.ctrl {
+            write!(f, "C-")?;
+        }
+        if self.alt {
+            write!(f, "M-")?;
+        }
+        write!(f, "{}", self.key)?;
+        if need_escape {
+            write!(f, ">")?;
+        }
+        Ok(())
     }
 }
 
