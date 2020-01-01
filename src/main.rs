@@ -9,8 +9,8 @@ mod file;
 mod find;
 mod frame;
 mod geom;
-mod input;
 mod keymap;
+mod keypress;
 mod output;
 mod render;
 mod row;
@@ -28,7 +28,7 @@ enum Error {
     #[snafu(display("{}", source))]
     Terminal { source: terminal::Error },
     #[snafu(display("{}", source))]
-    Input { source: input::Error },
+    Keypress { source: keypress::Error },
     #[snafu(display("{}", source))]
     Output { source: output::Error },
 }
@@ -61,7 +61,7 @@ fn run() -> Result<()> {
         output::refresh_screen(&mut term, &mut editor).context(Output)?;
         output::flush(&mut term).context(Output)?;
 
-        if input::process_keypress(&mut term, &mut decoder, &mut editor).context(Input)? {
+        if keypress::process_keypress(&mut term, &mut decoder, &mut editor).context(Keypress)? {
             break;
         }
     }

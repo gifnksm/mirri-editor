@@ -1,7 +1,7 @@
 use crate::{
     decode::Decoder,
     editor::Editor,
-    input::{self, PromptCommand},
+    keypress::{self, PromptCommand},
     terminal::RawTerminal,
 };
 
@@ -9,14 +9,14 @@ pub(crate) fn find(
     term: &mut RawTerminal,
     decoder: &mut Decoder,
     editor: &mut Editor,
-) -> input::Result<()> {
+) -> keypress::Result<()> {
     let mut find = if let Some(find) = editor.find_start() {
         find
     } else {
         return Ok(());
     };
 
-    let _query = input::prompt_with_callback(
+    let _query = keypress::prompt_with_callback(
         term,
         decoder,
         editor,

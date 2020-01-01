@@ -2,7 +2,7 @@ use crate::{
     decode::Decoder,
     frame::{self, Frame, SplitOrientation},
     geom::{Point, Size},
-    input,
+    keypress,
     status_message::StatusMessage,
     terminal::RawTerminal,
     text_buffer::TextBuffer,
@@ -69,8 +69,9 @@ impl Editor {
         &mut self,
         term: &mut RawTerminal,
         decoder: &mut Decoder,
-    ) -> input::Result<()> {
-        if let Some(filename) = input::prompt(term, decoder, self, "Open file: {} (ESC to cancel)")?
+    ) -> keypress::Result<()> {
+        if let Some(filename) =
+            keypress::prompt(term, decoder, self, "Open file: {} (ESC to cancel)")?
         {
             self.open(filename);
         } else {
@@ -83,14 +84,15 @@ impl Editor {
         &mut self,
         term: &mut RawTerminal,
         decoder: &mut Decoder,
-    ) -> input::Result<()> {
+    ) -> keypress::Result<()> {
         if self.buffer().is_none() {
             return Ok(());
         }
 
         if self.buffer().unwrap().filename().is_none() {
             if let Some(filename) =
-                input::prompt(term, decoder, self, "Save as: {} (ESC to cancel)")?.map(Into::into)
+                keypress::prompt(term, decoder, self, "Save as: {} (ESC to cancel)")?
+                    .map(Into::into)
             {
                 self.buffer_mut().unwrap().set_filename(Some(filename));
             } else {
@@ -152,7 +154,7 @@ impl Editor {
         &mut self,
         term: &mut RawTerminal,
         decoder: &mut Decoder,
-    ) -> input::Result<()> {
+    ) -> keypress::Result<()> {
         if self.buffer().map(|b| b.dirty()).unwrap_or(false) {
             let prompt = format!(
                 "Buffer {} modified; kill anyway? (yes or no) {{}}",
@@ -162,7 +164,7 @@ impl Editor {
                     .unwrap_or_else(|| Path::new("[no name]"))
                     .display()
             );
-            if !input::prompt_confirm(term, decoder, self, &prompt)? {
+            if !keypress::prompt_confirm(term, decoder, self, &prompt)? {
                 return Ok(());
             }
         }
@@ -175,9 +177,9 @@ impl Editor {
         &mut self,
         term: &mut RawTerminal,
         decoder: &mut Decoder,
-    ) -> input::Result<bool> {
+    ) -> keypress::Result<bool> {
         if self.dirty()
-            && !input::prompt_confirm(
+            && !keypress::prompt_confirm(
                 term,
                 decoder,
                 self,
