@@ -49,7 +49,7 @@ impl Decoder {
         Ok(byte)
     }
 
-    pub(crate) fn read_char(&mut self, reader: &mut impl Read) -> Result<Option<char>> {
+    fn read_char(&mut self, reader: &mut impl Read) -> Result<Option<char>> {
         if let Some(ch) = self.unread_char.take() {
             return Ok(Some(ch));
         }
@@ -84,7 +84,7 @@ impl Decoder {
         self.unread_char = Some(ch);
     }
 
-    pub(crate) fn read_input(&mut self, reader: &mut impl Read) -> Result<Option<Input>> {
+    fn read_raw_input(&mut self, reader: &mut impl Read) -> Result<Option<Input>> {
         use Key::*;
 
         match self.read_char(reader)? {
@@ -93,25 +93,21 @@ impl Decoder {
                 self.read_buf.clear();
                 self.read_buf.push(esc);
                 let ch = match self.read_char(reader)? {
+                    Some(ch) if ch != '[' => {
+                        self.set_unread_char(ch);
+                        return Ok(Some(Input::ctrl(Char('['))));
+                    }
                     Some(ch) => ch,
                     None => return Ok(Some(Input::ctrl(Char('[')))),
                 };
-                if ch == '[' {
+
+                self.read_buf.push(ch);
+                while let Some(ch) = self.read_char(reader)? {
                     self.read_buf.push(ch);
-                    while let Some(ch) = self.read_char(reader)? {
-                        self.read_buf.push(ch);
-                        match ch {
-                            'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
-                            _ => continue,
-                        }
+                    match ch {
+                        'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
+                        _ => continue,
                     }
-                } else {
-                    self.set_unread_char(ch);
-                    let mut input = self.read_input(reader)?;
-                    if let Some(input) = &mut input {
-                        input.alt = true;
-                    }
-                    return Ok(input);
                 }
                 let key = match &self.read_buf[..] {
                     "\x1b[1~" | "\x1b[7~" | "\x1b[H" => Home,
@@ -134,11 +130,26 @@ impl Decoder {
             Some(ch) => Ok(Some(Input::new(Char(ch)))),
         }
     }
+
+    pub(crate) fn read_input(&mut self, reader: &mut impl Read) -> Result<Option<Input>> {
+        if let Some(input) = self.read_raw_input(reader)? {
+            if input != Input::ctrl(Key::Char('[')) {
+                return Ok(Some(input));
+            }
+            if let Some(mut input) = self.read_raw_input(reader)? {
+                input.alt = true;
+                return Ok(Some(input));
+            }
+            return Ok(Some(input));
+        }
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::InputStrExt;
     use std::{io::Cursor, iter};
 
     #[test]
@@ -213,5 +224,24 @@ mod tests {
             }
         }
         itertools::assert_equal(output, expected);
+    }
+
+    #[test]
+    fn decode_esc_or_alt() {
+        fn check(input: &str, expected: Vec<Input>) {
+            let mut decoder = Decoder::new();
+            let mut output = vec![];
+            let mut cur = Cursor::new(input.as_bytes());
+            while let Ok(Some(input)) = decoder.read_input(&mut cur) {
+                output.push(input);
+            }
+            assert_eq!(output, expected);
+        }
+
+        check("\x1b", "C-[".inputs().map(|i| i.unwrap()).collect());
+        check("\x1ba", "M-a".inputs().map(|i| i.unwrap()).collect());
+        check("\x1b\x1b", "C-M-[".inputs().map(|i| i.unwrap()).collect());
+        check("\x1b\x00", "C-M-@".inputs().map(|i| i.unwrap()).collect());
+        check("\x1b\x05", "C-M-E".inputs().map(|i| i.unwrap()).collect());
     }
 }
