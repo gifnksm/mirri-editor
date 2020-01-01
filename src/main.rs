@@ -10,6 +10,7 @@ mod find;
 mod frame;
 mod geom;
 mod input;
+mod keymap;
 mod output;
 mod render;
 mod row;

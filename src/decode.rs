@@ -2,7 +2,7 @@ use matches::matches;
 use smallvec::SmallVec;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
-    fmt::{Display, Formatter, Result as FmtResult, Write as _},
+    fmt::{Debug, Display, Formatter, Result as FmtResult, Write as _},
     io::{self, Read},
     str::{self, FromStr, Utf8Error},
 };
@@ -25,7 +25,7 @@ pub(crate) enum Error {
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum Key {
     Char(char),
     ArrowLeft,
@@ -37,6 +37,12 @@ pub(crate) enum Key {
     End,
     PageUp,
     PageDown,
+}
+
+impl Debug for Key {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, r#""{}""#, self)
+    }
 }
 
 impl Display for Key {
@@ -97,11 +103,17 @@ impl Key {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct Input {
     pub(crate) key: Key,
     pub(crate) ctrl: bool,
     pub(crate) alt: bool,
+}
+
+impl Debug for Input {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, r#""{}""#, self)
+    }
 }
 
 impl Display for Input {
@@ -199,6 +211,7 @@ impl<'a> InputStrExt for &'a str {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct Inputs<'a> {
     s: &'a str,
 }
@@ -223,6 +236,28 @@ impl<'a> Iterator for Inputs<'a> {
         Some(input)
     }
 }
+
+impl<'a> DoubleEndedIterator for Inputs<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        debug_assert!(!self.s.ends_with(char::is_whitespace));
+        if self.s.is_empty() {
+            return None;
+        }
+
+        let start = if self.s.ends_with('>') {
+            self.s.rfind('<')
+        } else {
+            self.s.rfind(char::is_whitespace)
+        }
+        .unwrap_or(0);
+
+        let input = self.s[start..].parse();
+        self.s = &self.s[..start].trim_end();
+        Some(input)
+    }
+}
+
+impl<'a> std::iter::FusedIterator for Inputs<'a> {}
 
 #[derive(Debug)]
 pub(crate) struct Decoder {
@@ -394,9 +429,12 @@ mod tests {
         assert!("a b c"
             .inputs()
             .eq(vec!["a".parse(), "b".parse(), "c".parse()]));
-        assert!("<a b>  b c "
-            .inputs()
-            .eq(vec!["<a b>".parse(), "b".parse(), "c".parse()]));
+        assert!("<a b>  b c <page up>".inputs().eq(vec![
+            "<a b>".parse(),
+            "b".parse(),
+            "c".parse(),
+            "<page up>".parse()
+        ]));
         assert!("    ".inputs().eq(vec![]));
     }
 
