@@ -1,4 +1,4 @@
-use crate::decode::Input;
+use crate::input::Input;
 use std::{
     collections::{hash_map::Entry, HashMap, VecDeque},
     fmt::{Debug, Formatter, Result as FmtResult},
@@ -82,7 +82,7 @@ impl<T, U> KeyMap<T, U> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decode::InputStrExt;
+    use crate::input::InputStrExt;
     use matches::assert_matches;
 
     #[test]

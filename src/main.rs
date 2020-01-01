@@ -9,6 +9,7 @@ mod file;
 mod find;
 mod frame;
 mod geom;
+mod input;
 mod keymap;
 mod keypress;
 mod output;

@@ -1,8 +1,9 @@
 use crate::{
-    decode::{self, Decoder, Input, Key},
+    decode::{self, Decoder},
     editor::{CursorMove, Editor},
     find,
     frame::SplitOrientation,
+    input::{Input, Key},
     output,
     terminal::RawTerminal,
 };
