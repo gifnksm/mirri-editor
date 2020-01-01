@@ -45,9 +45,7 @@ struct Opt {
 fn run() -> Result<()> {
     let opt = Opt::from_args();
 
-    let mut decoder = Decoder::new();
-    let mut term = RawTerminal::new(&mut decoder).context(Terminal)?;
-
+    let mut term = RawTerminal::new().context(Terminal)?;
     let mut render_size = term.screen_size;
     render_size.rows -= 2;
     let mut editor = Editor::new(render_size);
@@ -58,8 +56,9 @@ fn run() -> Result<()> {
         editor.open(file);
     }
 
+    let mut decoder = Decoder::new();
     loop {
-        output::refresh_screen(&mut term, &mut decoder, &mut editor).context(Output)?;
+        output::refresh_screen(&mut term, &mut editor).context(Output)?;
         output::flush(&mut term).context(Output)?;
 
         if input::process_keypress(&mut term, &mut decoder, &mut editor).context(Input)? {

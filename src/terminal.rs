@@ -1,13 +1,8 @@
-use crate::{
-    decode::{self, Decoder},
-    geom::Size,
-    signal::SignalReceiver,
-};
+use crate::{geom::Size, signal::SignalReceiver};
 use nix::sys::termios::{self, SetArg, Termios};
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
     io::{self, Read, Stdin, Stdout, Write},
-    mem,
     os::unix::io::AsRawFd,
     panic, str,
     sync::Mutex,
@@ -25,16 +20,13 @@ pub(crate) enum Error {
         source: io::Error,
         backtrace: Backtrace,
     },
-    #[snafu(display("{}", source))]
-    Decode {
-        source: decode::Error,
-        backtrace: Backtrace,
-    },
     #[snafu(display("Could not write to terminal: {}", source))]
     TerminalOutput {
         source: io::Error,
         backtrace: Backtrace,
     },
+    #[snafu(display("Could not get window size"))]
+    GetWindowSize { backtrace: Backtrace },
     #[snafu(display("Unecptected escape sequence: {:?}", seq))]
     UnexpectedEscapeSequence { backtrace: Backtrace, seq: String },
 }
@@ -51,7 +43,7 @@ pub(crate) struct RawTerminal {
 }
 
 impl RawTerminal {
-    pub(crate) fn new(decoder: &mut Decoder) -> Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         use termios::SpecialCharacterIndices::*;
 
         let stdin = io::stdin();
@@ -95,7 +87,7 @@ impl RawTerminal {
             orig_termios,
         };
 
-        term.update_screen_size(decoder)?;
+        term.update_screen_size()?;
 
         Ok(term)
     }
@@ -104,58 +96,24 @@ impl RawTerminal {
         HideCursor::new(io::stdout())
     }
 
-    pub(crate) fn maybe_update_screen_size(&mut self, decoder: &mut Decoder) -> Result<bool> {
+    pub(crate) fn maybe_update_screen_size(&mut self) -> Result<bool> {
         let need_update = self.sigwinch_receiver.received();
         if need_update {
-            self.update_screen_size(decoder)?;
+            self.update_screen_size()?;
         }
         Ok(need_update)
     }
 
-    fn update_screen_size(&mut self, decoder: &mut Decoder) -> Result<()> {
-        self.screen_size = self.get_window_size(decoder)?;
+    fn update_screen_size(&mut self) -> Result<()> {
+        self.screen_size = self.get_window_size()?;
         Ok(())
     }
 
-    fn get_window_size(&mut self, decoder: &mut Decoder) -> Result<Size> {
+    fn get_window_size(&mut self) -> Result<Size> {
         if let Some((cols, rows)) = term_size::dimensions() {
             return Ok(Size { cols, rows });
         }
-
-        // Move the cursor to the bottom-right corner.
-        // `<esc>[9999;9999H` cannot be used here because the it does not
-        // guarantee that the cursor stops on the corner.
-        write!(&mut self.stdout, "\x1b[9999C\x1b[9999B").context(TerminalOutput)?;
-        // Query the cursor position
-        write!(&mut self.stdout, "\x1b[6n").context(TerminalOutput)?;
-
-        self.stdout.flush().context(TerminalOutput)?;
-
-        // Read the cursor position
-        let mut buf = String::new();
-        while let Some(ch) = decoder.read_char(&mut self.stdin).context(Decode)? {
-            buf.push(ch);
-            if ch == 'R' {
-                break;
-            }
-        }
-
-        let s = buf.trim_end_matches('R');
-        if s.starts_with("\x1b[") {
-            let s = s.trim_start_matches("\x1b[");
-            let mut it = s.split(';');
-            let rows = it.next().and_then(|s| s.parse().ok());
-            let cols = it.next().and_then(|s| s.parse().ok());
-            let next = it.next();
-            if let (Some(rows), Some(cols), None) = (rows, cols, next) {
-                return Ok(Size { cols, rows });
-            }
-        }
-
-        UnexpectedEscapeSequence {
-            seq: mem::replace(&mut buf, String::new()),
-        }
-        .fail()
+        GetWindowSize.fail()
     }
 }
 

@@ -1,5 +1,4 @@
 use crate::{
-    decode::Decoder,
     editor::Editor,
     syntax::Highlight,
     terminal::{self, RawTerminal},
@@ -139,12 +138,8 @@ fn draw_message_bar(term: &mut RawTerminal, message: Option<&str>) -> Result<()>
     Ok(())
 }
 
-pub(crate) fn refresh_screen(
-    term: &mut RawTerminal,
-    decoder: &mut Decoder,
-    editor: &mut Editor,
-) -> Result<()> {
-    let updated = term.maybe_update_screen_size(decoder).context(Terminal)?;
+pub(crate) fn refresh_screen(term: &mut RawTerminal, editor: &mut Editor) -> Result<()> {
+    let updated = term.maybe_update_screen_size().context(Terminal)?;
     if updated {
         let mut render_size = term.screen_size;
         render_size.rows -= 2; // status bar height + message bar height

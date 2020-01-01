@@ -134,7 +134,7 @@ pub(crate) fn prompt_with_callback(
     loop {
         let prompt = prompt.replace("{}", &buf);
         editor.set_status_message(prompt);
-        output::refresh_screen(term, decoder, editor).context(OutputError)?;
+        output::refresh_screen(term, editor).context(OutputError)?;
 
         while let Some(input) = decoder.read_input(term).context(DecodeError)? {
             let cmd = match input {
