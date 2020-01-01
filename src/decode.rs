@@ -1,4 +1,5 @@
 use crate::input::{Input, Key};
+use log::{trace, warn};
 use smallvec::SmallVec;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::{
@@ -51,12 +52,16 @@ impl Decoder {
 
     fn read_char(&mut self, reader: &mut impl Read) -> Result<Option<char>> {
         if let Some(ch) = self.unread_char.take() {
+            trace!("read_char (from unread): Some({:?})", ch);
             return Ok(Some(ch));
         }
         let mut bytes = SmallVec::<[u8; 4]>::new();
         match self.read_byte(reader)? {
             Some(b) => bytes.push(b),
-            None => return Ok(None),
+            None => {
+                trace!("read_char: None");
+                return Ok(None);
+            }
         };
 
         // https://tools.ietf.org/html/rfc3629
@@ -76,7 +81,9 @@ impl Decoder {
         }
 
         let s = str::from_utf8(&bytes).context(NonUtf8Input)?;
-        Ok(s.chars().next())
+        let ch = s.chars().next();
+        trace!("read_char: {:?}", ch);
+        Ok(ch)
     }
 
     fn set_unread_char(&mut self, ch: char) {
@@ -119,7 +126,10 @@ impl Decoder {
                     "\x1b[B" => ArrowDown,
                     "\x1b[C" => ArrowRight,
                     "\x1b[D" => ArrowLeft,
-                    _ => return Ok(Some(Input::ctrl(Char('[')))),
+                    seq => {
+                        warn!("read_char_raw: unknown seq {:?}", seq);
+                        return Ok(Some(Input::ctrl(Char('['))));
+                    }
                 };
                 Ok(Some(Input::new(key)))
             }
@@ -134,14 +144,18 @@ impl Decoder {
     pub(crate) fn read_input(&mut self, reader: &mut impl Read) -> Result<Option<Input>> {
         if let Some(input) = self.read_raw_input(reader)? {
             if input != Input::ctrl(Key::Char('[')) {
+                trace!("read_input: Some({:?})", input);
                 return Ok(Some(input));
             }
             if let Some(mut input) = self.read_raw_input(reader)? {
                 input.alt = true;
+                trace!("read_input: Some({:?})", input);
                 return Ok(Some(input));
             }
+            trace!("read_input: Some({:?})", input);
             return Ok(Some(input));
         }
+        trace!("read_input: None");
         Ok(None)
     }
 }

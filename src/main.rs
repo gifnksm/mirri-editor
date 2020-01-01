@@ -75,6 +75,8 @@ fn run() -> Result<()> {
 }
 
 fn main() {
+    env_logger::init();
+
     if let Err(e) = run() {
         eprintln!("An error occurred: {}", e);
         if let Some(backtrace) = ErrorCompat::backtrace(&e) {
