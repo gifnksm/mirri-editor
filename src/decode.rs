@@ -112,7 +112,7 @@ impl Decoder {
                 while let Some(ch) = self.read_char(reader)? {
                     self.read_buf.push(ch);
                     match ch {
-                        'A' | 'B' | 'C' | 'D' | 'H' | 'F' | '~' => break,
+                        'A' | 'B' | 'C' | 'D' | 'H' | 'F' | 'Z' | '~' => break,
                         _ => continue,
                     }
                 }
@@ -128,7 +128,7 @@ impl Decoder {
                     "\x1b[D" => ArrowLeft,
                     seq => {
                         warn!("read_char_raw: unknown seq {:?}", seq);
-                        return Ok(Some(Input::ctrl(Char('['))));
+                        return Ok(Some(Input::new(Char('?'))));
                     }
                 };
                 Ok(Some(Input::new(key)))
