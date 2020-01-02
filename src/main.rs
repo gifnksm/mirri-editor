@@ -1,4 +1,5 @@
 use crate::{decode::Decoder, editor::Editor, terminal::RawTerminal};
+use log::{info, warn};
 use snafu::{ErrorCompat, ResultExt, Snafu};
 use std::{path::PathBuf, process};
 use structopt::StructOpt;
@@ -77,11 +78,15 @@ fn run() -> Result<()> {
 fn main() {
     env_logger::init();
 
+    info!("start");
     if let Err(e) = run() {
+        warn!("An error occurred: {}", e);
         eprintln!("An error occurred: {}", e);
         if let Some(backtrace) = ErrorCompat::backtrace(&e) {
             eprintln!("{}", backtrace);
+            warn!("{}", backtrace);
         }
         process::exit(1);
     }
+    info!("end");
 }
