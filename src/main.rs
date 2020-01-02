@@ -59,6 +59,7 @@ fn run() -> Result<()> {
         editor.open(file);
     }
 
+    let _km = keypress::default_keymap();
     let mut decoder = Decoder::new();
     loop {
         output::refresh_screen(&mut term, &mut editor).context(Output)?;

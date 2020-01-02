@@ -24,4 +24,5 @@ matches = "0.1.8"
 tokio = { version = "0.2.6", features = ["io-std", "io-util", "macros"] }
 log = "0.4.8"
 env_logger = "0.7.1"
+derivative = "1.0.3"
 

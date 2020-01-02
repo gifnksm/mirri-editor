@@ -3,11 +3,13 @@ use crate::{
     editor::{CursorMove, Editor},
     find,
     frame::SplitOrientation,
-    input::{Input, Key},
+    input::{Input, InputStrExt, Key},
+    keymap::KeyMap,
     output,
     terminal::RawTerminal,
 };
 use snafu::{ResultExt, Snafu};
+use std::rc::Rc;
 
 #[derive(Debug, Snafu)]
 pub(crate) enum Error {
@@ -89,6 +91,101 @@ pub(crate) fn process_keypress(
     }
 
     Ok(false)
+}
+
+pub(crate) fn default_keymap<'a>(
+) -> KeyMap<(&'a mut RawTerminal, &'a mut Decoder, &'a mut Editor), Result<bool>> {
+    fn insert(
+        km: &mut KeyMap<(&mut RawTerminal, &mut Decoder, &mut Editor), Result<bool>>,
+        key: &str,
+        act: impl FnMut((&mut RawTerminal, &mut Decoder, &mut Editor)) -> Result<bool> + 'static,
+    ) {
+        km.insert(key.inputs().map(|i| i.unwrap()), Rc::new(act));
+    }
+
+    let mut km = KeyMap::new();
+    insert(&mut km, "C-M", |(_, _, editor)| {
+        editor.insert_newline();
+        Ok(false)
+    });
+    insert(&mut km, "C-I", |(_, _, editor)| {
+        editor.insert_char('\t');
+        Ok(false)
+    });
+    insert(&mut km, "C-?", |(_, _, editor)| {
+        editor.delete_back_char();
+        Ok(false)
+    });
+    insert(&mut km, "C-Q", |(term, decoder, editor)| {
+        Ok(editor.quit(term, decoder)?)
+    });
+
+    let move_cursor = &[
+        ("C-P", CursorMove::Up),
+        ("C-N", CursorMove::Down),
+        ("C-B", CursorMove::Left),
+        ("C-F", CursorMove::Right),
+        ("C-A", CursorMove::Home),
+        ("C-E", CursorMove::End),
+        ("C-V", CursorMove::PageDown),
+        ("M-v", CursorMove::PageUp),
+        ("M-<", CursorMove::BufferHome),
+        ("M->", CursorMove::BufferEnd),
+        ("<up>", CursorMove::Up),
+        ("<down>", CursorMove::Down),
+        ("<left>", CursorMove::Left),
+        ("<right>", CursorMove::Right),
+        ("<home>", CursorMove::Home),
+        ("<end>", CursorMove::End),
+        ("<page up>", CursorMove::PageUp),
+        ("<page down>", CursorMove::PageDown),
+    ];
+    for (key, mov) in move_cursor {
+        let mov = *mov;
+        insert(&mut km, key, move |(_, _, editor)| {
+            editor.move_cursor(mov);
+            Ok(false)
+        });
+    }
+
+    insert(&mut km, "C-O", |(term, decoder, editor)| {
+        editor.open_prompt(term, decoder)?;
+        Ok(false)
+    });
+    insert(&mut km, "C-S", |(term, decoder, editor)| {
+        editor.save(term, decoder)?;
+        Ok(false)
+    });
+    insert(&mut km, "C-G", |(term, decoder, editor)| {
+        find::find(term, decoder, editor)?;
+        Ok(false)
+    });
+    insert(&mut km, "C-H", |(_, _, editor)| {
+        editor.delete_back_char();
+        Ok(false)
+    });
+    insert(&mut km, "C-X", |(_, _, editor)| {
+        editor.next_buffer();
+        Ok(false)
+    });
+    insert(&mut km, "M-X", |(_, _, editor)| {
+        editor.prev_buffer();
+        Ok(false)
+    });
+    insert(&mut km, "M-2", |(_, _, editor)| {
+        editor.split_frame(SplitOrientation::Vertical);
+        Ok(false)
+    });
+    insert(&mut km, "C-C", |(term, decoder, editor)| {
+        editor.close_buffer(term, decoder)?;
+        Ok(false)
+    });
+    insert(&mut km, "<delete>", |(_, _, editor)| {
+        editor.delete_char();
+        Ok(false)
+    });
+
+    km
 }
 
 #[derive(Debug, Copy, Clone)]

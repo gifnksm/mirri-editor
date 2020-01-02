@@ -1,38 +1,22 @@
 use crate::input::Input;
+use derivative::Derivative;
 use std::{
+    cell::RefCell,
     collections::{hash_map::Entry, HashMap, VecDeque},
-    fmt::{Debug, Formatter, Result as FmtResult},
+    rc::Rc,
 };
 
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub(crate) enum Action<T, U> {
-    Func(Box<dyn FnMut(T) -> U>),
-    KeyMap(Box<KeyMap<T, U>>),
+    Func(#[derivative(Debug = "ignore")] Rc<dyn FnMut(T) -> U>),
+    KeyMap(Rc<RefCell<KeyMap<T, U>>>),
 }
 
-impl<T, U> Debug for Action<T, U>
-where
-    T: Debug,
-    U: Debug,
-{
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::Func(_) => write!(f, "Func(..)"),
-            Self::KeyMap(km) => write!(f, "KeyMap({:?})", km),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""), Default(bound = ""))]
 pub(crate) struct KeyMap<T, U> {
     map: HashMap<Input, Action<T, U>>,
-}
-
-impl<T, U> Default for KeyMap<T, U> {
-    fn default() -> Self {
-        KeyMap {
-            map: HashMap::new(),
-        }
-    }
 }
 
 impl<T, U> KeyMap<T, U> {
@@ -40,10 +24,14 @@ impl<T, U> KeyMap<T, U> {
         Self::default()
     }
 
+    pub(crate) fn get(&self, input: &Input) -> Option<Action<T, U>> {
+        self.map.get(input).cloned()
+    }
+
     pub(crate) fn insert(
         &mut self,
         mut inputs: impl Iterator<Item = Input> + Clone,
-        act: Box<dyn FnMut(T) -> U>,
+        act: Rc<dyn FnMut(T) -> U>,
     ) -> Option<(VecDeque<Input>, Action<T, U>)> {
         let input = inputs.next().unwrap();
 
@@ -57,7 +45,7 @@ impl<T, U> KeyMap<T, U> {
 
         match self.map.entry(input) {
             Entry::Occupied(mut e) => match e.get_mut() {
-                Action::KeyMap(km) => km.insert(inputs, act).map(|(mut is, old)| {
+                Action::KeyMap(km) => km.borrow_mut().insert(inputs, act).map(|(mut is, old)| {
                     is.push_front(input);
                     (is, old)
                 }),
@@ -72,7 +60,7 @@ impl<T, U> KeyMap<T, U> {
                 let mut km = KeyMap::new();
                 let inserted = km.insert(inputs, act);
                 assert!(inserted.is_none());
-                e.insert(Action::KeyMap(Box::new(km)));
+                e.insert(Action::KeyMap(Rc::new(RefCell::new(km))));
                 None
             }
         }
@@ -89,24 +77,15 @@ mod tests {
     fn insert() {
         let mut km = KeyMap::new();
         assert!(km
-            .insert(
-                "C-x C-x C-x".inputs().map(|i| i.unwrap()),
-                Box::new(|()| ()),
-            )
+            .insert("C-x C-x C-x".inputs().map(|i| i.unwrap()), Rc::new(|()| ()),)
             .is_none());
 
         assert!(km
-            .insert(
-                "C-x C-x C-y".inputs().map(|i| i.unwrap()),
-                Box::new(|()| ()),
-            )
+            .insert("C-x C-x C-y".inputs().map(|i| i.unwrap()), Rc::new(|()| ()),)
             .is_none());
 
         let (is, act) = km
-            .insert(
-                "C-x C-x C-x".inputs().map(|i| i.unwrap()),
-                Box::new(|()| ()),
-            )
+            .insert("C-x C-x C-x".inputs().map(|i| i.unwrap()), Rc::new(|()| ()))
             .unwrap();
         assert!(is
             .into_iter()
@@ -114,16 +93,13 @@ mod tests {
         assert_matches!(act, Action::Func(..));
 
         let (is, act) = km
-            .insert("C-x C-x".inputs().map(|i| i.unwrap()), Box::new(|()| ()))
+            .insert("C-x C-x".inputs().map(|i| i.unwrap()), Rc::new(|()| ()))
             .unwrap();
         assert!(is.into_iter().eq("C-x C-x".inputs().map(|i| i.unwrap())));
         assert_matches!(act, Action::KeyMap(..));
 
         let (is, act) = km
-            .insert(
-                "C-x C-x C-z".inputs().map(|i| i.unwrap()),
-                Box::new(|()| ()),
-            )
+            .insert("C-x C-x C-z".inputs().map(|i| i.unwrap()), Rc::new(|()| ()))
             .unwrap();
         assert!(is.into_iter().eq("C-x C-x".inputs().map(|i| i.unwrap())));
         assert_matches!(act, Action::Func(..));
