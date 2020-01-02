@@ -4,7 +4,6 @@ use snafu::{ErrorCompat, ResultExt, Snafu};
 use std::{path::PathBuf, process};
 use structopt::StructOpt;
 
-mod async_decode;
 mod decode;
 mod editor;
 mod file;
